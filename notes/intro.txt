@@ -1,0 +1,109 @@
+LKM broadly classified into: 
+for to use modules in kernel, 
+    the feature CONFIG_MODULES must be enabled.
+    CONFIG_MODULE_UNLOAD for rmmod
+    MODULE_FORCE_UNLOAD for force removal, when kernel restricts to remove
+    module at runtime.
+1) device drivers
+# character device
+# block device
+# network device
+2) filesystem drivers
+3) system calls: existing linux system calls can be override of your own
+
+Kernel space: 
+this is a set of where the kernel is hosted and where it
+runs. Kernel memory (or kernel space) is a memory range, owned by the kernel,
+protected by access flags, preventing any user apps from messing with the kernel
+(un)knowingly.
+It is a feature of a modern CPU, allowing it to operate either in privileged or
+unprivileged mode.
+
+Module dependencies: EXPORT_SYMBOL
+a module can provide functions or variables, exporting them using the
+EXPORT_SYMBOL macro, which makes them available for other modules. These are called
+symbols.
+
+depmod utility:
+depmod is a tool that you run during the kernel build process to generate
+module dependency files. It does that by reading each module in
+/lib/modules/<kernel_release>/ to determine what symbols it should export and
+what symbols it needs. The result of that process is written to the file
+modules.dep , and its binary version modules.dep.bin . It is a kind of module
+indexing.
+
+Module loading and unloading:
+insmod
+modprobe
+lsmod
+rmmod
+depmod
+modinfo
+
+/etc/modules-load.d/<filename>.conf:
+If you want some module to be loaded at boot time, just create the file /etc/modules-
+load.d/<filename>.conf , and add the module's name that should be loaded, one per
+line. You may create as many .conf files as you need:
+An example of /etc/modules-load.d/mymodules.conf is as follows:
+#this line is a comment
+uio
+iwlwifi
+
+Auto-loading:
+depmod also processes
+module files in order to extract and gather that information, and generates a
+modules.alias file, located in /lib/modules/<kernel_release>/modules.alias ,
+which will map devices to their drivers:
+
+At this step, you'll need a user-space hot-plug agent (or device manager),
+usually udev (or mdev ), that will register with the kernel in order to get
+notified when a new device appears.
+
+__init and __exit attributes:
+1) refer include/linux/init.h for its usage and other attributes
+#define __init	__section(.init.text) __cold  __latent_entropy __noinitretpoline
+#define __exit	__section(.exit.text)
+#define __initdata      __section(.init.data)
+#define __initconst     __section(.init.rodata)
+
+The __init keyword tells the linker to place the code in a dedicated section
+into the kernel object file. This section is known in advance to the kernel, and
+freed when the module is loaded and the init function finished. This applies
+only to built-in drivers, not to loadable modules.
+
+The same for the __exit keyword, whose corresponding code is omitted when the
+module is compiled statically into the kernel, or when module unloading support
+is not enabled.
+
+Let's spend more time understanding how such attributes work. It is all about
+object files called Executable and Linkable Format (ELF). An ELF object file is
+made of various named sections. Some of these are mandatory and form the basis
+of the ELF standard, but one can make up any section one wants and have it used
+by special programs. This is what the kernel does.
+
+# prints all sections
+objdump -h module.ko
+
+# dump the content of section
+objdump -d -j .modinfo
+
+Only a few of the sections are standerd ELF sections:
+# .text
+# .data
+# .rodata
+# .comment
+# .bss (uninitialized data segment, also called as block started by symbol)
+
+and others are added on demand for kernel
+# .modeinfo: stores info about modules
+# .init.text: stores code prefixed with the __init macro
+
+The linker ( ld on Linux systems), which is a part of binutils, is responsible
+for the placement of symbols (data, code, and so on) in the appropriate section
+in the generated binary in order to be processed by the loader when the program
+is executed. One may customize these sections, change their default location, or
+even add additional sections by providing a linker script, called a linker
+definition file (LDF) or linker definition script (LDS).
+
+#Linux LDS file located in arch/<arch>/kernel/vmlinux.lds.S.
+
