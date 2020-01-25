@@ -1,10 +1,11 @@
 obj-m = my_module.o
 
-KDIR = /lib/modules/$(shell uname -r)/build
+K_PREBUILT = /lib/modules/$(shell uname -r)/build
 
-all:
-	make -C $(KDIR) M=$(PWD) modules
+KSRC=/home/vinait/workplace/kernel.org
 
-clean:
-	make -C $(KDIR) M=$(PWD) clean
+all default: modules
+
+modules help clean:
+	make -C $(KSRC) M=$(PWD) $@
 

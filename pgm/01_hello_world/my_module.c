@@ -12,7 +12,7 @@
 
 /* globals */
 int 	int_value;
-int		int_arr[4];
+int	int_arr[4];
 char 	*char_ptr;
 int 	cb_value = 0;
 
@@ -20,7 +20,11 @@ int 	cb_value = 0;
 module_param(int_value, int, S_IRUSR|S_IWUSR);                    
 module_param(char_ptr, charp, S_IRUSR|S_IWUSR);                  
 
-module_param_array(int_arr, int, NULL, S_IRUSR|S_IWUSR);  
+module_param_array(int_arr, int, NULL, S_IRUSR|S_IWUSR);
+
+MODULE_PARM_DESC(int_value, "this is int variable");
+MODULE_PARM_DESC(char_ptr, "this is char pointer variable");
+MODULE_PARM_DESC(int_arr, "this is integer arry");
  
 int notify_param(const char *val, const struct kernel_param *kp)
 { 
@@ -29,8 +33,8 @@ int notify_param(const char *val, const struct kernel_param *kp)
 
 	if(res == 0) {
 
-		printk(KERN_INFO "Call back function called...\n");
-		printk(KERN_INFO "New value of cb_value = %d\n", cb_value);
+		pr_alert("Call back function called...\n");
+		pr_alert("New value of cb_value = %d\n", cb_value);
 
 		return 0;
 	}
@@ -47,7 +51,7 @@ const struct kernel_param_ops my_param_ops =
 	.get = &param_get_int, 
 };
  
-module_param_cb(cb_value, &my_param_ops, &cb_value, S_IRUGO|S_IWUSR );
+module_param_cb(cb_value, &my_param_ops, &cb_value, S_IRUSR|S_IWUSR );
  
 /* __init and __exit are actually kernel macros
  * defined in include/linux/init.h
@@ -58,22 +62,22 @@ static int __init my_module_init(void)
 {
 	int i;
 
-	printk(KERN_INFO "int_value		= %d\n", int_value);
-	printk(KERN_INFO "cb_value 		= %d\n", cb_value);
-	printk(KERN_INFO "char_ptr		= %s\n", char_ptr);
+	pr_info("int_value		= %d\n", int_value);
+	pr_info("cb_value 		= %d\n", cb_value);
+	pr_info("char_ptr		= %s\n", char_ptr);
 
 	for (i = 0; i < (sizeof int_arr / sizeof (int)); i++) {
-		printk(KERN_INFO "int_arr[%d] = %d\n", i, int_arr[i]);
+		pr_info("int_arr[%d] = %d\n", i, int_arr[i]);
 	}
 
-	printk(KERN_INFO "%s\n", __FUNCTION__);
+	pr_info("%s\n", __FUNCTION__);
 
 	return 0;
 }
 
 static void __exit my_module_exit(void)
 {
-	printk(KERN_INFO "%s\n", __FUNCTION__);
+	pr_info("%s\n", __FUNCTION__);
 }
 
 module_init(my_module_init);

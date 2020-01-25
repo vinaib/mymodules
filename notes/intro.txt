@@ -215,6 +215,12 @@ the second is the default one, according to the CONFIG_DEFAULT_MESSAGE_LOGLEVEL 
 The current log level can be changed with:
 # echo <level> > /proc/sys/kernel/printk
 
+example:
+echo 6 > /proc/sys/kernel/printk
+
+cat /proc/sys/kernel/printk
+6	4	1	7
+
 A list of kernel log levels is as follows:
 /* integer equivalents of KERN_<LEVEL> */
 #define LOGLEVEL_SCHED -2 /* Deferred messages from sched code * are set to this special level */
@@ -254,8 +260,16 @@ module_param(name, type, perm);
 
 name : The name of the variable used as the parameter
 
-type : The parameter's type (bool, charp, byte, short, ushort, int, uint, long,
-ulong), where charp stands for char pointer 
+type : The parameter's type (
+		bool, 
+		charp, 	// charp stands for char pointer
+		byte, 
+		short, 
+		ushort, 
+		int, 
+		uint, 
+		long, 
+		ulong), 
 
 perm : This represents the /sys/module/<module>/parameters/<param> file
 permissions. Some of them are S_IWUSR , S_IRUSR , S_IXUSR , S_IRGRP , S_WGRP ,
@@ -264,6 +278,10 @@ and S_IRUGO , where:
 	R : read, W : write, X : execute
 	USR : user, GRP : group, UGO : user, group, others
 
-If perm is 0 , the file parameter in sysfs will not be created. You should use
-only S_IRUGO read-only parameters, which I highly recommend; by making a | (OR)
-with other properties, you can obtain fine-grained properties.
+* If perm is 0 , the file parameter in sysfs will not be created. 
+
+When using module parameters, one should use MODULE_PARM_DESC in order to describe
+each of them. This macro will populate the module info section with each parameter's
+description.
+
+
