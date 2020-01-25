@@ -62,22 +62,22 @@ static int __init my_module_init(void)
 {
 	int i;
 
-	pr_info("int_value		= %d\n", int_value);
-	pr_info("cb_value 		= %d\n", cb_value);
-	pr_info("char_ptr		= %s\n", char_ptr);
+	pr_alert("int_value		= %d\n", int_value);
+	pr_alert("cb_value 		= %d\n", cb_value);
+	pr_alert("char_ptr		= %s\n", char_ptr);
 
 	for (i = 0; i < (sizeof int_arr / sizeof (int)); i++) {
-		pr_info("int_arr[%d] = %d\n", i, int_arr[i]);
+		pr_alert("int_arr[%d] = %d\n", i, int_arr[i]);
 	}
 
-	pr_info("%s\n", __FUNCTION__);
+	pr_alert("%s\n", __FUNCTION__);
 
 	return 0;
 }
 
 static void __exit my_module_exit(void)
 {
-	pr_info("%s\n", __FUNCTION__);
+	pr_alert("%s\n", __FUNCTION__);
 }
 
 module_init(my_module_init);
