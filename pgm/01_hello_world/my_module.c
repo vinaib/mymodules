@@ -1,7 +1,12 @@
 #include<linux/module.h>
 #include<linux/kernel.h>
 #include<linux/init.h>
-#include<linux/moduleparam.h>
+#include<linux/moduleparam.h>		/* for module_param */
+#include<linux/sched.h>			/* for current */
+
+#include<linux/types.h>			/* dev_t */
+#include<linux/kdev_t.h>		/* MKDEV */
+#include<linux/fs.h>			/* chardev_region */
 
 /* how to pass module params?
  * sudo insmod my_module.ko 
@@ -58,9 +63,20 @@ module_param_cb(cb_value, &my_param_ops, &cb_value, S_IRUSR|S_IWUSR );
  *    	#define __init__section(.init.text)
  * 	#define __exit__section(.exit.text)
  */
+
+#define MAJOR_NUM 	511
+#define MINOR_START 	0
+#define MINOR_LAST 	3
+#define MINOR_COUNT	4
+#define DEV_NAME	"scull_char"
+
 static int __init my_module_init(void)
 {
 	int i;
+
+	int ret = 0;
+
+	dev_t first = MKDEV (MAJOR_NUM, MINOR_START);
 
 	pr_alert("int_value		= %d\n", int_value);
 	pr_alert("cb_value 		= %d\n", cb_value);
@@ -70,14 +86,31 @@ static int __init my_module_init(void)
 		pr_alert("int_arr[%d] = %d\n", i, int_arr[i]);
 	}
 
-	pr_alert("%s\n", __FUNCTION__);
+	pr_alert("%s %s\n", __FUNCTION__, current->comm);
 
-	return 0;
+
+	ret = register_chrdev_region (
+			first,
+			MINOR_COUNT,
+			DEV_NAME );
+	if(ret < 0) {
+		pr_alert("reg fail %d\n", ret);
+	}
+
+	/* returning negative value fails to insmod */
+	return ret;
 }
 
 static void __exit my_module_exit(void)
 {
-	pr_alert("%s\n", __FUNCTION__);
+	dev_t first = MKDEV (MAJOR_NUM, MINOR_START);
+
+	pr_alert("%s %s\n", __FUNCTION__, current->comm);
+
+	unregister_chrdev_region (
+			first,
+			MINOR_COUNT);
+
 }
 
 module_init(my_module_init);

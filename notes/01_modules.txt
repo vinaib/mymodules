@@ -1,4 +1,6 @@
+--------------------------------------------------------------------------------
 LKM broadly classified into: 
+--------------------------------------------------------------------------------
 for to use modules in kernel, 
     the feature CONFIG_MODULES must be enabled.
     CONFIG_MODULE_UNLOAD for rmmod
@@ -11,7 +13,9 @@ for to use modules in kernel,
 2) filesystem drivers
 3) system calls: existing linux system calls can be override of your own
 
+--------------------------------------------------------------------------------
 Kernel space: 
+--------------------------------------------------------------------------------
 this is a set of where the kernel is hosted and where it
 runs. Kernel memory (or kernel space) is a memory range, owned by the kernel,
 protected by access flags, preventing any user apps from messing with the kernel
@@ -19,12 +23,16 @@ protected by access flags, preventing any user apps from messing with the kernel
 It is a feature of a modern CPU, allowing it to operate either in privileged or
 unprivileged mode.
 
+--------------------------------------------------------------------------------
 Module dependencies: EXPORT_SYMBOL
+--------------------------------------------------------------------------------
 a module can provide functions or variables, exporting them using the
 EXPORT_SYMBOL macro, which makes them available for other modules. These are called
 symbols.
 
+--------------------------------------------------------------------------------
 depmod utility:
+--------------------------------------------------------------------------------
 depmod is a tool that you run during the kernel build process to generate
 module dependency files. It does that by reading each module in
 /lib/modules/<kernel_release>/ to determine what symbols it should export and
@@ -32,7 +40,9 @@ what symbols it needs. The result of that process is written to the file
 modules.dep , and its binary version modules.dep.bin . It is a kind of module
 indexing.
 
+--------------------------------------------------------------------------------
 Module loading and unloading:
+--------------------------------------------------------------------------------
 insmod
 modprobe
 lsmod
@@ -40,7 +50,10 @@ rmmod
 depmod
 modinfo
 
+if module_init() return value is < 0, then module will not be inserted.
+--------------------------------------------------------------------------------
 /etc/modules-load.d/<filename>.conf:
+--------------------------------------------------------------------------------
 If you want some module to be loaded at boot time, just create the file /etc/modules-
 load.d/<filename>.conf , and add the module's name that should be loaded, one per
 line. You may create as many .conf files as you need:
@@ -49,7 +62,9 @@ An example of /etc/modules-load.d/mymodules.conf is as follows:
 uio
 iwlwifi
 
+--------------------------------------------------------------------------------
 Auto-loading:
+--------------------------------------------------------------------------------
 depmod also processes
 module files in order to extract and gather that information, and generates a
 modules.alias file, located in /lib/modules/<kernel_release>/modules.alias ,
@@ -59,7 +74,9 @@ At this step, you'll need a user-space hot-plug agent (or device manager),
 usually udev (or mdev ), that will register with the kernel in order to get
 notified when a new device appears.
 
+--------------------------------------------------------------------------------
 __init and __exit attributes:
+--------------------------------------------------------------------------------
 1) refer include/linux/init.h for its usage and other attributes
 #define __init	__section(.init.text) __cold  __latent_entropy __noinitretpoline
 #define __exit	__section(.exit.text)
@@ -81,13 +98,17 @@ made of various named sections. Some of these are mandatory and form the basis
 of the ELF standard, but one can make up any section one wants and have it used
 by special programs. This is what the kernel does.
 
+--------------------------------------------------------------------------------
 # prints all sections
+--------------------------------------------------------------------------------
 objdump -h module.ko
 
 # dump the content of section
 objdump -d -j .modinfo
 
+--------------------------------------------------------------------------------
 Only a few of the sections are standerd ELF sections:
+--------------------------------------------------------------------------------
 # .text
 # .data
 # .rodata
@@ -107,14 +128,19 @@ definition file (LDF) or linker definition script (LDS).
 
 #Linux LDS file located in arch/<arch>/kernel/vmlinux.lds.S.
 
+--------------------------------------------------------------------------------
 # Error handling
+--------------------------------------------------------------------------------
 include/uapi/asm-generic/errno-base.h
 include/uapi/asm-generic/errno.h
 
 return -ERROR
 return -EIO
 
+
+--------------------------------------------------------------------------------
 # Handling null pointer errors
+--------------------------------------------------------------------------------
 When it comes to returning an error from functions that are supposed to return a
 pointer, functions often return the NULL pointer. since one does not exactly
 know why this null pointer is returned. For that purpose, the kernel provides
@@ -132,6 +158,7 @@ if (!indio_dev)
 	return ERR_PTR(-ENOMEM);
 --------------------------------------------------------------------------------
 ## long IS_ERR(const void *ptr);
+--------------------------------------------------------------------------------
 This is used to check whether the returned value is a pointer error or
 not, if (IS_ERR(foo)).
 
@@ -142,11 +169,12 @@ if (IS_ERR(my_indio_dev))
 
 --------------------------------------------------------------------------------
 ## long PTR_ERR(const void *ptr);
+--------------------------------------------------------------------------------
 This returns the actual error code return PTR_ERR(foo);
 
 --------------------------------------------------------------------------------
-
 Kernel coding style: error values to be return:
+--------------------------------------------------------------------------------
 If the name of a function is an action or an imperative command, the function
 should return an error-code integer. If the name is a predicate, the function
 should return a succeeded Boolean.
@@ -157,9 +185,8 @@ predicate, and the pci_dev_present() function returns 1 if it succeeds in
 finding a matching device or 0 if it doesn't.
 
 --------------------------------------------------------------------------------
-
 Message Printing: printk()
---------------------------
+--------------------------------------------------------------------------------
 include/linux/kern_levels.h
 
 #define KERN_SOH "\001" /* ASCII Start Of Header */
@@ -179,6 +206,7 @@ include/linux/kern_levels.h
 
 printk(KERN_ERR "This is an error\n");
 
+--------------------------------------------------------------------------------
 CONFIG_DEFAULT_MESSAGE_LOGLEVEL
 --------------------------------------------------------------------------------
 If you omit the debug level ( printk("This is an error\n") ), the kernel will
@@ -188,6 +216,7 @@ config option, which is the default kernel log level.
 --------------------------------------------------------------------------------
 One may actually use one of the following, much more meaningful macros, which
 are wrappers around those defined previously: 
+--------------------------------------------------------------------------------
 pr_emerg , 
 pr_alert , 
 pr_crit ,
@@ -234,16 +263,18 @@ A list of kernel log levels is as follows:
 #define LOGLEVEL_INFO 6 /* informational */
 #define LOGLEVEL_DEBUG 7 /* debug-level messages */
 
+--------------------------------------------------------------------------------
 PRINTK NEVER BLOCKS
--------------------
+--------------------------------------------------------------------------------
 printk() never blocks and is safe enough to be called even from atomic
 contexts. It tries to lock the console and print the message. If locking fails,
 the output will be written into a buffer and the function will return, never
 blocking. The current console holder will then be notified about new
 messages and will print them before releasing the console.
 
+--------------------------------------------------------------------------------
 Dynamic debug:
-----------------
+--------------------------------------------------------------------------------
 The kernel supports other debug methods too, either dynamically or by using
 #define DEBUG on top of the file. People interested in such debugging style can
 refer to kernel documentation in Documentation/dynamic-debug-howto.txt file.
@@ -284,4 +315,80 @@ When using module parameters, one should use MODULE_PARM_DESC in order to descri
 each of them. This macro will populate the module info section with each parameter's
 description.
 
+Things to bear in mind while writing code for kernel/modules:
+A module will have more abstractions:
+# Linux system run multiple processes, more than one of which can be trying to
+  use your driver at the same time. 
+# Devices interrupt the processor, interrupt handlers run asynchronously and can
+  be invoked at the same time that your driver is trying to do something else.
+# several software abstractions(kernel timers) run asynchronously as well
+# Linux can run on Symmentric multiprocesor (SMP) systems, with the result that
+  your driver could be executing concurrenly on more than one CPU.
+# with kernel preemption, even on uniprocessor systems to have many of the same
+  concurrency issues as multiprocessor systems
+# As a result linux kernel code, modules must be reentrant. It must be capable
+  of running in more than one context at the same time.
+# data structures must be carefull designed to keep multiple threads of
+  execution separate.
+# shared data must be well guarded to prevent corruption of data.
+# kernel code executing a system call is working in the context of a process and
+  is able to access data in the process's address space.
+# code that handles interrupts is aynchronous wrt process and is not related to
+  any particular process.
+# even though kernel shares same address space as of process while executing
+  system call, kernel have its own very small stack which is shared by entire
+  kernel space call chain. (so large automatic variables not good idea in kernel
+  space)
+
+--------------------------------------------------------------------------------
+ Current Pointer:
+--------------------------------------------------------------------------------
+# global pointer "current" points to current process on relevant cpu
+# yields to struct task_struct
+# current->comm :base naem of the program file.
+
+User space modules: pro and cons of user space drivers
+--------------------------------------------------------------------------------
+Pros of userspace drivers
+--------------------------------------------------------------------------------
+# The full C library can be linked in.
+# The programmer can run a conventional debugger on the driver code without
+  having to go through contortions to debug a running kernel.
+# If a user-space driver hangs, you can simply kill it. Problems with the driver
+  are unlikely to hang the entire system
+# User memory is swappable, unlike kernel memory. An infrequently used device
+  with a huge driver won’t occupy RAM that other programs could be using
+# A well-designed driver program can still, like kernel-space drivers, allow
+  concurrent access to a device.
+# If you must write a closed-source driver, the user-space option makes it
+  easier for you to avoid ambiguous licensing situations and problems with
+  changing kernel interfaces.
+
+Examples:  
+# USB drivers can be written for user space;
+  see the (still young) libusb project at libusb.sourceforge.net.
+# “gadgetfs” in the kernel source. 
+# Another example is the X server: 
+
+--------------------------------------------------------------------------------
+Cons of userspace drivers
+--------------------------------------------------------------------------------
+# Interrupts are not available in user space. There are workarounds for this
+  limitation on some platforms, such as the vm86 system call on the IA32
+  architecture.
+  https://www.ecstaticlyrics.com/notes/vm86
+
+# Direct access to memory is possible only by mmapping /dev/mem, and only a
+  privileged user can do that.
+
+# Response time is slower, because a context switch is required to transfer infor-
+  mation or actions between the client and the hardware.
+
+# if the driver has been swapped to disk, response time is unacceptably
+  long. Using the mlock system call might help, but usually you’ll need to lock
+  many memory pages, because a user-space program depends on a lot of library
+  code. mlock, too, is limited to privileged users.
+
+# The most important devices can’t be handled in user space, including, but
+   not limited to, network interfaces and block devices.
 

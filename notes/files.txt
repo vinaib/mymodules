@@ -1,0 +1,4 @@
+list: include/linux/list.h
+wait: include/linux/wait.h
+	include\linux\waitqueue.h
+string: include/linux/string.h

@@ -1,0 +1,63 @@
+Device numbers:
+--------------------------------------------------------------------------------
+<linux/types.h> : dev_t
+--------------------------------------------------------------------------------
+major: identifies the driver
+minor: which device is being referred to. Driver can drive multiple devices.
+
+data struct: dev_t (unsigned int): 32 bit:
+				      12 bits for major number
+				      20 bits for minor number
+
+Even if 12 bits are allocated for major number, the maximum is 511.
+What about 3 more bits?
+--------------------------------------------------------------------------------
+<linux/kdev_t.h>: Helper macros: 
+--------------------------------------------------------------------------------
+MAJOR(dev_t dev)
+MINOR(dev_t dev)
+
+MKDEV(int major, int minor)
+
+--------------------------------------------------------------------------------
+<linux/fs.h>: Allocating char Device numbers: static
+--------------------------------------------------------------------------------
+# int register_chrdev_region(dev_t first, unsigned int count, char *name);
+
+register_chrdev_region works well if you know ahead of time exactly which device
+numbers you want.
+
+first: beginning device number of the range you would like to allocate
+	minor: most often 0
+	major: ?
+count: total number of contiguous device numbers you are requesting.
+name: name is the name of the device. It will appear in /proc/devices and sysfs
+      (/sys/dev/char/).
+
+return: 0 on success
+	< 0 on erro
+--------------------------------------------------------------------------------
+<linux/fs.h>: Allocating char Device numbers: Dynamic
+--------------------------------------------------------------------------------
+int alloc_chrdev_region(dev_t *dev, unsigned int firstminor, unsigned int count, 
+		char *name);
+
+kernel will allocate a major number for you on the fly
+
+# dev is an output-only parameter that will, on successful completion, hold the 
+  first number in your allocated range.
+
+# firstminor should be the requested first minor number to use
+
+# count and name parameters work like those given to request_chrdev_region
+
+--------------------------------------------------------------------------------
+<linux/fs.h>: Deallocating char Device numbers
+--------------------------------------------------------------------------------
+void unregister_chrdev_region(dev_t first, unsigned int count);
+
+# Regardless of how you allocate your device number, free using
+  unregister_chrdev_region.
+
+# usual place to call would be in your module’s cleanup function
+
