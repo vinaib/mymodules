@@ -10,24 +10,24 @@
 
 /* how to pass module params?
  * sudo insmod my_module.ko 
- * int_value=10 
+ * scull_major=10
  * char_ptr="meenakshi"
  * int_arr=100,101,102,103 
  */
 
 /* globals */
-int 	int_value;
+int 	scull_major;
 int	int_arr[4];
 char 	*char_ptr;
 int 	cb_value = 0;
 
 /* module params */
-module_param(int_value, int, S_IRUSR|S_IWUSR);                    
-module_param(char_ptr, charp, S_IRUSR|S_IWUSR);                  
+module_param(scull_major, int, S_IRUSR|S_IWUSR);
+module_param(char_ptr, charp, S_IRUSR|S_IWUSR);
 
 module_param_array(int_arr, int, NULL, S_IRUSR|S_IWUSR);
 
-MODULE_PARM_DESC(int_value, "this is int variable");
+MODULE_PARM_DESC(scull_major, "this is int variable");
 MODULE_PARM_DESC(char_ptr, "this is char pointer variable");
 MODULE_PARM_DESC(int_arr, "this is integer arry");
  
@@ -47,13 +47,13 @@ int notify_param(const char *val, const struct kernel_param *kp)
         return -1;
 }
  
-const struct kernel_param_ops my_param_ops = 
-{ 
+const struct kernel_param_ops my_param_ops =
+{
 	/* Use our setter */
 	.set = &notify_param,
 
 	/* standard getter */
-	.get = &param_get_int, 
+	.get = &param_get_int,
 };
  
 module_param_cb(cb_value, &my_param_ops, &cb_value, S_IRUSR|S_IWUSR );
@@ -78,7 +78,7 @@ static int __init my_module_init(void)
 
 	dev_t first = MKDEV (MAJOR_NUM, MINOR_START);
 
-	pr_alert("int_value		= %d\n", int_value);
+	pr_alert("scull_major		= %d\n", scull_major);
 	pr_alert("cb_value 		= %d\n", cb_value);
 	pr_alert("char_ptr		= %s\n", char_ptr);
 
