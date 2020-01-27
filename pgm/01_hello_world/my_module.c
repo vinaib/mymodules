@@ -27,7 +27,7 @@ module_param(char_ptr, charp, S_IRUSR|S_IWUSR);
 
 module_param_array(int_arr, int, NULL, S_IRUSR|S_IWUSR);
 
-MODULE_PARM_DESC(scull_major, "this is int variable");
+MODULE_PARM_DESC(scull_major, "major number");
 MODULE_PARM_DESC(char_ptr, "this is char pointer variable");
 MODULE_PARM_DESC(int_arr, "this is integer arry");
  
@@ -76,7 +76,7 @@ static int __init my_module_init(void)
 
 	int ret = 0;
 
-	dev_t first = MKDEV (MAJOR_NUM, MINOR_START);
+	dev_t first;
 
 	pr_alert("scull_major		= %d\n", scull_major);
 	pr_alert("cb_value 		= %d\n", cb_value);
@@ -89,13 +89,29 @@ static int __init my_module_init(void)
 	pr_alert("%s %s\n", __FUNCTION__, current->comm);
 
 
-	ret = register_chrdev_region (
+	if(scull_major) {
+		first = MKDEV (scull_major, MINOR_START);
+
+		ret = register_chrdev_region (
 			first,
 			MINOR_COUNT,
 			DEV_NAME );
+	} else {
+		ret = alloc_chrdev_region (
+				&first,
+				MINOR_START,
+				MINOR_COUNT,
+				DEV_NAME);
+
+		scull_major = MAJOR(first);
+	}
+
 	if(ret < 0) {
 		pr_alert("reg fail %d\n", ret);
+	} else {
+		pr_alert("scull major %d\n", scull_major);
 	}
+
 
 	/* returning negative value fails to insmod */
 	return ret;
@@ -103,7 +119,7 @@ static int __init my_module_init(void)
 
 static void __exit my_module_exit(void)
 {
-	dev_t first = MKDEV (MAJOR_NUM, MINOR_START);
+	dev_t first = MKDEV (scull_major, MINOR_START);
 
 	pr_alert("%s %s\n", __FUNCTION__, current->comm);
 

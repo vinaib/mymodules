@@ -61,3 +61,55 @@ void unregister_chrdev_region(dev_t first, unsigned int count);
 
 # usual place to call would be in your module’s cleanup function
 
+
+--------------------------------------------------------------------------------
+Three important Data Structures: file_operations, file, inode <linux/fs.h>
+--------------------------------------------------------------------------------
+filp/file
+# Each open file represented internally by a file structure. The file structure
+# represents an open file. It is created by the kernel on open and is passed to
+# any function that operates on the file, until the last close(all instances).
+
+filp->private_data: The open system call sets this pointer to NULL before
+calling the open method for the driver. You are free to make its own use of the
+field or to ignore it; private_data is a useful resource for preserving state
+information across system calls.
+
+drivers never create file structures; they only access structures created
+elsewhere.
+
+file_operations/f_ops
+# and it is associated with its own set of functions (f_ops). The operations are
+mostly in charge of implementing the system calls. The operations associated
+with file. The kernel assigns the pointer as part of its implementation of
+open. The value in filp->f_op is never saved by the kernel for later reference;
+this means that you can change the file operations associated with your file, and
+the new methods will be effective after you return to the caller. This practice
+allows the implementation of several behaviors under the same major number
+without introducing overhead at each system call.
+
+# We can consider the file to be an “object” and the (f_ops) functions operating
+  on it to be its “methods".
+
+inode
+The inode structure is used by the kernel internally to represent files. 
+Therefore, it is different from the file structure that represents an open file
+descriptor.There can be numerous file structures representing multiple open
+descriptors on a single file, but they all point to a single inode structure.
+
+As a general rule, only two fields of this structure are of interest for writing
+driver code.
+
+dev_t i_rdev;
+For inodes that represent device files, this field contains the actual device number.
+
+macros that can be used to obtain the major and minor number from an inode:
+unsigned int iminor(struct inode *inode);
+unsigned int imajor(struct inode *inode);
+
+struct cdev *i_cdev;
+struct cdev is the kernel’s internal structure that represents char devices; this
+field contains a pointer to that structure when the inode refers to a char device
+file.
+
+
