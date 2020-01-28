@@ -70,6 +70,21 @@ filp/file
 # represents an open file. It is created by the kernel on open and is passed to
 # any function that operates on the file, until the last close(all instances).
 
+The most imp fields of struct file are:
+---------------------------------------	
+mode_t f_mode; FMODE_READ, FMODE_WRITE
+
+loff_t f_pos;
+
+struct file_operations *f_op;
+
+struct dentry *f_dentry;
+The directory entry (dentry) structure associated with the file. Device driver writ-
+ers normally need not concern themselves with dentry structures, other than to
+access the inode structure as filp->f_dentry->d_inode .
+
+unsigned int f_flags: O_RDONLY , O_NONBLOCK, O_SYNC
+
 filp->private_data: The open system call sets this pointer to NULL before
 calling the open method for the driver. You are free to make its own use of the
 field or to ignore it; private_data is a useful resource for preserving state
@@ -104,6 +119,7 @@ dev_t i_rdev;
 For inodes that represent device files, this field contains the actual device number.
 
 macros that can be used to obtain the major and minor number from an inode:
+----------------------------------------------------------------------------
 unsigned int iminor(struct inode *inode);
 unsigned int imajor(struct inode *inode);
 
@@ -111,5 +127,100 @@ struct cdev *i_cdev;
 struct cdev is the kernel’s internal structure that represents char devices; this
 field contains a pointer to that structure when the inode refers to a char device
 file.
+
+--------------------------------------------------------------------------------
+Char Device Registration : <linux/cdev.h>
+--------------------------------------------------------------------------------
+Before the kernel invokes your device’s operations, you must allocate and
+register one or more of these structures.
+
+There are two ways of allocating and initializing one of these structures. 
+
+# If you wish to obtain a standalone cdev structure at runtime:
+
+struct cdev *my_cdev = cdev_alloc();
+my_cdev->ops = &my_fops;
+
+# Chances are, however, that you will want to embed the cdev structure within a
+device-specific structure of your own; that is what scull does. In that case,
+you should initialize the structure that you have already allocated with:
+
+void cdev_init(struct cdev *cdev, struct file_operations *fops);
+
+# struct cdev has an owner field that should be set to THIS_MODULE.
+
+Inform kernel about cdev:
+-------------------------
+int cdev_add(struct cdev *dev, dev_t num, unsigned int count);
+
+as soon as cdev_add returns, your device is “live” and its operations can be
+called by the kernel. You should not call cdev_add until your driver is
+completely ready to handle operations on the device.
+
+To remove a char device from the system, call:
+----------------------------------------------
+void cdev_del(struct cdev *dev);
+
+Older way of char device registration:
+---------------------------------------
+int register_chrdev(unsigned int major, const char *name,
+struct file_operations *fops);
+
+int unregister_chrdev(unsigned int major, const char *name);
+
+--------------------------------------------------------------------------------
+The Open Method: int (*open)(struct inode *inode, struct file *filp);
+--------------------------------------------------------------------------------
+# used to do initialization
+
+# Check for device-specific errors (such as device-not-ready or similar hardware
+problems)
+
+# Initialize the device if it is being opened for the first time
+
+# Update the f_op pointer, if necessary
+
+# Allocate and fill any data structure to be put in filp->private_data
+
+# The first order of business, however, is usually to identify which device is being
+opened. is it my device requested? Inode have the i_cdev which contains the cdev
+struct we setup/added before through cdev_add(); The only problem is that we do
+not normally want the cdev structure itself, we want the scull_devl structure
+that contains the cdev structure.
+
+struct scull_dev *sdevp;
+	sdevp = container_of(inode->i_cdev, struct scull_dev, cdev);
+filp->private_data = dev
+
+
+--------------------------------------------------------------------------------
+The Release Method: int (*release)(struct inode *inode, struct file *filp);
+--------------------------------------------------------------------------------
+The device method should perform the following tasks:
+
+• Deallocate anything that open allocated in filp->private_data
+• Shut down the device on last close
+
+Relationship between close and relase:
+--------------------------------------
+the dup and fork system calls create copies of open files without
+calling open. each of those copies is then closed at program termination, and 
+not every close system call causes the release method to be invoked.
+
+The kernel keeps a counter of how many times a file structure is being used.
+Neither fork nor dup creates a new file structure (only open does that); they
+just increment the counter in the existing structure. The close system call
+executes the release method only when the counter for the file structure drops
+to 0 , which happens when the structure is destroyed. This relationship between
+the release method and the close system call guarantees that your driver sees
+only one release call for each open.
+
+the previous discussion applies even when the application terminates without
+explicitly closing its open files: the kernel automatically closes any file at
+process exit time by internally using the close system call.
+
+relation between close and flush:
+----------------------------------
+Note that the flush method is called every time an application calls close.
 
 

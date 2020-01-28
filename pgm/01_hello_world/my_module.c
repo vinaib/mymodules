@@ -70,6 +70,71 @@ module_param_cb(cb_value, &my_param_ops, &cb_value, S_IRUSR|S_IWUSR );
 #define MINOR_COUNT	4
 #define DEV_NAME	"scull_char"
 
+struct scull_qset {
+	void **data;
+	struct scull_qset *next;
+};
+
+struct scull_dev {
+	struct scull_qset *data; 	/* Pointer to first quantum set */
+	int quantum; 			/* the current quantum size */
+	int qset;			/* the current array size */
+	unsigned long size;		/* amount of data stored here */
+	unsigned int access_key; 	/* used by sculluid and scullpriv */
+	struct semaphore sem;		/* mutual exclusion semaphore */
+	struct cdev cdev; 		/* Char device structure */
+};
+
+struct scull_dev sdev;
+
+int scull_open(struct inode *inode, struct file *filp)
+{
+	struct scull_dev *dev;			/* device information */
+	
+	dev = container_of(inode->i_cdev, struct scull_dev, cdev);
+	filp->private_data = dev;		/* for other methods */
+
+	/* now trim to 0 the length of the device if open was write-only */
+	if ( (filp->f_flags & O_ACCMODE) = = O_WRONLY) {
+		scull_trim(dev); 		/* ignore errors */
+	}
+	
+	return 0;	/* success */
+}
+
+int scull_release(struct inode *inode, struct file *filp)
+{
+	return 0;
+}
+
+/* style: c tagged structure initialization syntax */
+struct file_operations scull_fops = {
+	.owner = THIS_MODULE,
+	.llseek = scull_llseek,
+	.read = scull_read,
+	.write = scull_write,
+	.ioctl = scull_ioctl,
+	.open = scull_open,
+	.release = scull_release,
+};
+
+static void scull_setup_cdev(struct scull_dev *dev, int index)
+{
+	int err, devno = MKDEV(scull_major, MINOR_START + index);
+
+	cdev_init(&dev->cdev, &scull_fops);
+
+	dev->cdev.owner = THIS_MODULE;
+	dev->cdev.ops = &scull_fops;
+	
+	/* adds cdev to the kernel/system. brings cdev to live */
+	err = cdev_add (&dev->cdev, devno, 1);
+
+	/* Fail gracefully if need be */
+	if (err)
+		pr_alert("Error %d adding scull%d", err, index);
+}
+
 static int __init my_module_init(void)
 {
 	int i;
@@ -112,6 +177,7 @@ static int __init my_module_init(void)
 		pr_alert("scull major %d\n", scull_major);
 	}
 
+	scull_setup_cdev(&sdev, 0);
 
 	/* returning negative value fails to insmod */
 	return ret;
@@ -122,6 +188,9 @@ static void __exit my_module_exit(void)
 	dev_t first = MKDEV (scull_major, MINOR_START);
 
 	pr_alert("%s %s\n", __FUNCTION__, current->comm);
+
+	/* removed char device from kernel/system*/
+	cdev_del(&sdev->cdev);
 
 	unregister_chrdev_region (
 			first,
