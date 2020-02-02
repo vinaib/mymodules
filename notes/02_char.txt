@@ -223,4 +223,152 @@ relation between close and flush:
 ----------------------------------
 Note that the flush method is called every time an application calls close.
 
+--------------------------------------------------------------------------------
+read/write Method:
+ssize_t read(struct file *filp, char __user *buff, size_t count, loff_t *offp);
+
+ssize_t write(struct file *filp, const char __user *buff, size_t count, 
+		loff_t *offp);
+--------------------------------------------------------------------------------
+__user *buff argument to the read and write methods is a user space pointer.
+Therefore it cannot be directly dereferenced by kernel code. 
+
+Reasons why userspace pointer cannot be directly dereferenced by kernel code:
+-> Depending on which architecture your driver is running on, and how the kernel
+was configured, the user-space pointer may not be valid while running in kernel
+mode at all. There may be no mapping for that address, or it could point to some
+other, random data
+
+-> Even if the pointer does mean the same thing in kernel space, user-space mem-
+ory is paged, and the memory in question might not be resident in RAM when
+the system call is made. Attempting to reference the user-space memory directly
+could generate a page fault, which is something that kernel code is not allowed
+to do. The result would be an “oops,” which would result in the death of the
+process that made the system call.
+
+-> The pointer in question has been supplied by a user program, which could be
+buggy or malicious. If your driver ever blindly dereferences a user-supplied
+pointer, it provides an open doorway allowing a user-space program to access or
+overwrite memory anywhere in the system. If you do not wish to be responsible
+for compromising the security of your users’ systems, you cannot ever derefer-
+ence a user-space pointer directly.
+
+<asm/uaccess.h>:
+----------------------------
+TO access the user-space buffer in order to get its job done. This access must
+always be performed by special, kernel-supplied functions in order to be safe.
+
+unsigned long copy_to_user(void __user *to,
+	const void *from,
+	unsigned long count);
+
+unsigned long copy_from_user(void *to,
+	const void __user *from,
+	unsigned long count);
+
+-> checks for whether the user space pointer is valid.
+-> If the pointer is invalid, no copy is performed; 
+-> if an invalid address is encountered during the copy, on the other hand, only
+part of the data is copied.
+-> In both cases, the return value is the amount of memory still to be copied.
+
+Aside: (__copy_to_user,__copy_from_user vs copy_to_user, copy_from_user)
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+However, it’s worth noting that if you don’t need to check the user-space
+pointer you can invoke __copy_to_user and __copy_from_user instead. This is
+useful, for example, if you know you already checked the argument.
+
+*Important*
++++++++++++
+The net result for the driver writer is that any function that accesses user
+space must be reentrant, must be able to execute concurrently with other driver
+functions, and, in particular, must be in a position where it can legally
+sleep.
+
+read and write return value:
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+A return value greater than or equal to 0, instead, tells the calling program
+how many bytes have been successfully transferred. If some data is transferred
+correctly and then an error happens, the return value must be the count of bytes
+successfully transferred, and the error does not get reported until the next
+time the function is called. Implementing this convention requires, of course,
+that your driver remember that the error has occurred so that it can return
+the error status in the future.
+
+The read method: RULES
+--------------------------------------------------------------------------------
+-> return value equal to count argument, the requested number of bytes
+transferred. this is optimal case
+
+-> return is positive and smaller than count. Only part of data has been
+transferred. In these cases most applications retries the read.
+
+-> return value is 0, end of file is reached.
+
+-> return value is negative, which means error. typical values are EINTR/EFAULT.
+
+-> read system could block if there is no data
+
+-> if current read position is greater than the device size, the read method
+returns 0 to signal that there is no data available. 
+for example, this can happen if process A is reading the device while process B
+opens it for writing, thus truncating the device to a length of 0. Process A
+suddenly finds itself past end-of-file and the next read call returns 0.
+
+The write method: RULES
+--------------------------------------------------------------------------------
+-> return value equal to count, the requested number of bytes has been
+transferred
+
+-> return is positive and smaller than count. only part of the data has been
+transferred. The program will most likely retry writing the rest of the data.
+
+-> return value is 0, nothing was written. This result is not an error, and
+there is no reason to return an error code. Once again, the standard library
+retries the call to write.
+
+-> A negative value means an error occurred, as defined in <linux/errno.h>
+
+-> blocking read, non blocking read
+
+readv and writev
+--------------------------------------------------------------------------------
+These “vector” versions of read and write take an array of structures, each of
+which contains a pointer to a buffer and a length value.
+
+A readv call would then be expected to read the indicated amount into each
+buffer in turn. writev, instead, would gather together the contents of each
+buffer and put them out as a single write operation.
+
+If your driver does not supply methods to handle the vector operations, readv
+and writev are implemented with multiple calls to your read and write methods.
+In many situations, however, greater efficiency is acheived by implementing
+readv and writev directly.
+
+The prototypes for the vector operations are:
+
+ssize_t (*readv) (struct file *filp, const struct iovec *iov,
+	unsigned long count, loff_t *ppos);
+
+ssize_t (*writev) (struct file *filp, const struct iovec *iov,
+	unsigned long count, loff_t *ppos);
+
+-> The iovec structure, defined in <linux/uio.h>
+struct iovec {
+	void _ _user *iov_base;
+	__kernel_size_t iov_len;
+};
+-> Each iovec describes one chunk of data to be transferred; it starts at
+iov_base (in user space) and is iov_len bytes long.
+
+-> The count parameter tells the method how many iovec structures there are.
+These structures are created by the application, but the kernel copies them into
+kernel space before calling the driver.
+
+-> The simplest implementation of the vectored operations would be a
+straightforward loop that just passes the address and length out of each iovec
+to the driver’s read or write function. Often, however, efficient and correct
+behavior requires that the driver do something smarter.
+
+
 

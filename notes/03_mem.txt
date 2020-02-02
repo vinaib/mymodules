@@ -1,0 +1,93 @@
+--------------------------------------------------------------------------------
+# drivers: kernel space buffers are nonswappable whereas user space buffers are
+# swappable.
+--------------------------------------------------------------------------------
+copy_to_user()
+
+--------------------------------------------------------------------------------
+# "include/linux/uaccess.h"
+--------------------------------------------------------------------------------
+static __always_inline unsigned long __must_check
+copy_to_user(void __user *to, const void *from, unsigned long n)
+{
+        if (likely(check_copy_size(from, n, true)))
+                n = _copy_to_user(to, from, n); 
+        return n;
+}
+--------------------------------------------------------------------------------
+# "include/linux/uaccess.h": _copy_to_user: if inline
+--------------------------------------------------------------------------------
+_copy_to_user(void __user *to, const void *from, unsigned long n)
+{
+        might_fault();
+        if (access_ok(to, n)) {
+                kasan_check_read(from, n);
+                n = raw_copy_to_user(to, from, n);
+        }
+        return n;
+}
+
+--------------------------------------------------------------------------------
+# "lib/usercopy.c": _copy_to_user: if not inline
+--------------------------------------------------------------------------------
+unsigned long _copy_to_user(void __user *to, const void *from, unsigned long n)
+{
+        might_fault();
+        if (likely(access_ok(to, n))) {
+                kasan_check_read(from, n);
+                n = raw_copy_to_user(to, from, n);
+        }
+        return n;
+}
+EXPORT_SYMBOL(_copy_to_user);
+
+--------------------------------------------------------------------------------
+# access_ok(): arch dependent: arch/ia64/include/asm/uaccess.h
+--------------------------------------------------------------------------------
+static inline int __access_ok(const void __user *p, unsigned long size)
+{
+        unsigned long addr = (unsigned long)p;
+        unsigned long seg = get_fs().seg;
+        return likely(addr <= seg) &&
+         (seg == KERNEL_DS.seg || likely(REGION_OFFSET(addr) < RGN_MAP_LIMIT));
+}
+#define access_ok(addr, size)   __access_ok((addr), (size))
+
+#define KERNEL_DS       ((mm_segment_t) { ~0UL })
+#define USER_DS         ((mm_segment_t) { TASK_SIZE-1 })
+
+#define get_fs()  (current_thread_info()->addr_limit)
+#define set_fs(x) (current_thread_info()->addr_limit = (x))
+
+#define segment_eq(a, b)        ((a).seg == (b).seg)
+
+--------------------------------------------------------------------------------
+# access_ok(): arch dependent: arch/arm/include/asm/uaccess.h
+--------------------------------------------------------------------------------
+#define access_ok(addr, size)   (__range_ok(addr, size) == 0
+
+It checks that the given range (address + size) is within the current thread’s
+limit.		
+--------------------------------------------------------------------------------
+# access_ok(): arch dependent: arch/x86/include/asm/uaccess.h
+--------------------------------------------------------------------------------
+#define access_ok(addr, size)                                   \
+({                                                                      \
+        WARN_ON_IN_IRQ();                                               \
+        likely(!__range_not_ok(addr, size, user_addr_max()));           \
+})
+
+--------------------------------------------------------------------------------
+# kmalloc and kfree: <linux/slab.h>
+--------------------------------------------------------------------------------
+void *kmalloc(size_t size, int flags);
+void kfree(void *ptr);
+
+-> A call to kmalloc attempts to allocate size bytes of memory;
+-> the return value is a pointer to that memory or NULL if the allocation fails
+-> flags argument is used to describe how the memory should be allocated
+
+-> Allocated memory should be freed with kfree
+-> it is legal to pass NULL pointer to kfree
+
+-> kmalloc is not the most efficient way to allocate large areas of memory
