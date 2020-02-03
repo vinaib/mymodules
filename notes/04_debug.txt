@@ -1,0 +1,51 @@
+DEFAULT_MESSAGE_LOGLEVEL: "kernel/printk.c" 
+--------------------------------------------------------------------------------
+1) A printk statement with no specified priority defaults to above option
+(KERN_WARNING)
+
+2) If both klogd and sys-logd are running on the system, kernel messages are
+appended to /var/log/messages.
+
+3) If klogd is not running, the message won’t reach user space unless you read
+/proc/kmsg (which is often most easily done with the dmesg command).
+
+(log_level vs console_log_level):
++++++++++++++++++++++++++++++++++++
+4) Based on the loglevel, the kernel may print the message to the current
+console, be it a text-mode terminal, a serial port, or a parallel printer. If
+the priority is less than the integer variable console_loglevel , the message is
+delivered to the console one line at a time.
+
+5) The variable console_loglevel is initialized to DEFAULT_CONSOLE_LOGLEVEL and
+can be modified through the sys_syslog system call. One way to change it is by
+specifying the –c switch when invoking klogd, as specified in the klogd manpage.
+Note that to change the current value, you must first kill klogd and then
+restart it with the –c option.
+
+6) The new level is specified as an integer value between 1 and 8, inclusive. 
+If it is set to 1 , only messages of level 0 ( KERN_EMERG ) reach the console; 
+if it is set to 8 , all messages, including debugging ones, are displayed.
+
+7) It is also possible to read and modify the console loglevel using the text
+file /proc/sys/ kernel/printk.
+
+The file hosts four integer values: 
+the current loglevel, 
+the default level for messages that lack an explicit loglevel, 
+the minimum allowed loglevel, and 
+the boot-time default loglevel. 
+
+Writing a single value to this file changes the current loglevel to that value;
+thus, for example, you can cause all kernel messages to appear at the console by
+simply entering:
+
+# echo 8 > /proc/sys/kernel/printk
+
+Redirecting Consle Messages
+--------------------------------------------------------------------------------
+Linux allows for some flexibility in console logging policies by letting you
+send messages to a specific virtual console.
+
+By default,the “console” is the current virtual terminal. To select a different
+virtual terminal to receive messages, you can issue ioctl(TIOCLINUX) on any
+console device.
