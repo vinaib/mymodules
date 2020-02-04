@@ -4,9 +4,14 @@
 #include<linux/moduleparam.h>		/* for module_param */
 #include<linux/sched.h>			/* for current */
 
+#include<linux/cdev.h>			/* cdev */
 #include<linux/types.h>			/* dev_t */
 #include<linux/kdev_t.h>		/* MKDEV */
 #include<linux/fs.h>			/* chardev_region */
+#include<linux/slab.h>			/* kmalloc/kfree */
+#include<linux/uaccess.h>		/* copy_to/from_user */
+
+#include"my_module.h"
 
 /* how to pass module params?
  * sudo insmod my_module.ko 
@@ -17,6 +22,8 @@
 
 /* globals */
 int 	scull_major;
+int	scull_quantum = SCULL_QUANTUM;
+int	scull_qset = SCULL_QSET;
 int	int_arr[4];
 char 	*char_ptr;
 int 	cb_value = 0;
@@ -38,8 +45,8 @@ int notify_param(const char *val, const struct kernel_param *kp)
 
 	if(res == 0) {
 
-		pr_alert("Call back function called...\n");
-		pr_alert("New value of cb_value = %d\n", cb_value);
+		PDEBUG("Call back function called...\n");
+		PDEBUG("New value of cb_value = %d\n", cb_value);
 
 		return 0;
 	}
@@ -64,55 +71,34 @@ module_param_cb(cb_value, &my_param_ops, &cb_value, S_IRUSR|S_IWUSR );
  * 	#define __exit__section(.exit.text)
  */
 
-#define MAJOR_NUM 	511
-#define MINOR_START 	0
-#define MINOR_LAST 	3
-#define MINOR_COUNT	4
-#define DEV_NAME	"scull_char"
-
-struct scull_qset {
-	void **data;
-	struct scull_qset *next;
-};
-
-struct scull_dev {
-	struct scull_qset *data; 	/* Pointer to first quantum set */
-	int quantum; 			/* the current quantum size */
-	int qset;			/* the current array size */
-	unsigned long size;		/* amount of data stored here */
-	unsigned int access_key; 	/* used by sculluid and scullpriv */
-	struct semaphore sem;		/* mutual exclusion semaphore */
-	struct cdev cdev; 		/* Char device structure */
-};
 
 /* Global dev structure
  */
-struct scull_dev sdev;
+scull_dev sdev;
 
 /* Function: 
  * scull_trim is also used in the module cleanup function to return memory used
  * by scull to the system.
  */
-int scull_trim(struct scull_dev *dev)
+int scull_trim(scull_dev *dev)
 {
-	struct scull_qset *next, *dptr;
-	int qset = dev->qset;
-
-	/* "dev" is not-null */
+	scull_dev *next, *dptr;
+	int qset = dev->qset;	/* "dev" is not-null */
 	int i;
 
-	for (dptr = dev->data; dptr; dptr = next) { /* all the list items */
+	for (dptr = dev; dptr; dptr = next) { /* all the list items */
 		if (dptr->data) {
 			for (i = 0; i < qset; i++)
-				kfree(dptr->data[i]);
+				if (dptr->data[i]) 
+					kfree(dptr->data[i]);
 
 			kfree(dptr->data);
 			dptr->data = NULL;
 		}
 
 		next = dptr->next;
-
-		kfree(dptr);
+		if(dptr != dev)
+			kfree(dptr);
 	}
 
 	dev->size = 0;
@@ -128,13 +114,13 @@ int scull_trim(struct scull_dev *dev)
  */
 int scull_open(struct inode *inode, struct file *filp)
 {
-	struct scull_dev *dev;			/* device information */
+	scull_dev *dev;			/* device information */
 	
-	dev = container_of(inode->i_cdev, struct scull_dev, cdev);
+	dev = container_of(inode->i_cdev, scull_dev, cdev);
 	filp->private_data = dev;		/* for other methods */
 
 	/* now trim to 0 the length of the device if open was write-only */
-	if ( (filp->f_flags & O_ACCMODE) = = O_WRONLY) {
+	if ( (filp->f_flags & O_ACCMODE) == O_WRONLY) {
 		scull_trim(dev); 		/* ignore errors */
 	}
 	
@@ -149,17 +135,34 @@ int scull_release(struct inode *inode, struct file *filp)
 	return 0;
 }
 
+/* Function:
+ * Follow the list 
+ */
+scull_dev *scull_follow(scull_dev *dev, int n)
+{
+    while (n--) {
+        if (!dev->next) {
+            dev->next = kmalloc(sizeof(scull_dev), GFP_KERNEL);
+            memset(dev->next, 0, sizeof(scull_dev));
+        }
+        dev = dev->next;
+        continue;
+    }
+    return dev;
+}
+
 /* Function: 
  * scull_read 
  */
 ssize_t scull_read(struct file *filp, char __user *buf, size_t count,
 loff_t *f_pos)
 {
-	struct scull_dev *dev = filp->private_data;
-	struct scull_qset *dptr;
+	scull_dev *dev = filp->private_data;
+	scull_dev *dptr;
 
 	/* the first listitem */
-	int quantum = dev->quantum, qset = dev->qset;
+	int quantum = dev->quantum;
+	int qset = dev->qset;
 	int itemsize = quantum * qset; /* how many bytes in the listitem */
 	int item, s_pos, q_pos, rest;
 	ssize_t retval = 0;
@@ -176,13 +179,17 @@ loff_t *f_pos)
 	/* find listitem, qset index, and offset in the quantum */
 	item = (long)*f_pos / itemsize;
 	rest = (long)*f_pos % itemsize;
-	s_pos = rest / quantum; q_pos = rest % quantum;
+	s_pos = rest / quantum; 
+	q_pos = rest % quantum;
 
 	/* follow the list up to the right position (defined elsewhere) */
 	dptr = scull_follow(dev, item);
 
-	if (dptr = = NULL || !dptr->data || ! dptr->data[s_pos])
+	if (!dptr->data)
 		goto out; /* don't fill holes */
+
+	if(!dptr->data[s_pos])
+		goto out;
 
 	/* read only up to the end of this quantum */
 	if (count > quantum - q_pos)
@@ -209,9 +216,11 @@ out:
 ssize_t scull_write(struct file *filp, const char __user *buf, size_t count,
 loff_t *f_pos)
 {
-	struct scull_dev *dev = filp->private_data;
-	struct scull_qset *dptr;
-	int quantum = dev->quantum, qset = dev->qset;
+	scull_dev *dev = filp->private_data;
+	scull_dev *dptr;
+
+	int quantum = dev->quantum;
+	int qset = dev->qset;
 	int itemsize = quantum * qset;
 	int item, s_pos, q_pos, rest;
 	ssize_t retval = -ENOMEM; /* value used in "goto out" statements */
@@ -222,12 +231,13 @@ loff_t *f_pos)
 	/* find listitem, qset index and offset in the quantum */
 	item = (long)*f_pos / itemsize;
 	rest = (long)*f_pos % itemsize;
-	s_pos = rest / quantum; q_pos = rest % quantum;
+	s_pos = rest / quantum; 
+	q_pos = rest % quantum;
 
 	/* follow the list up to the right position */
 	dptr = scull_follow(dev, item);
 
-	if (dptr = = NULL)
+	if (dptr == NULL)
 		goto out;
 
 	if (!dptr->data) {
@@ -266,6 +276,28 @@ out:
 	return retval;
 }	
 
+/* Function:
+ * scull_ioctl
+ *  old ioctl signature
+ * int scull_ioctl(struct inode *inode, struct file *filp,
+ *                 unsigned int cmd, unsigned long arg)
+ */
+long scull_ioctl(struct file *filp,
+                 unsigned int cmd, unsigned long arg)
+{
+	int ret = 0;
+
+	return ret;
+}
+
+/* Function: 
+ * scull_llseek
+ */
+loff_t  scull_llseek(struct file *filp, loff_t off, int whence)
+{
+	return (loff_t)0;
+}
+
 /* style: c tagged structure initialization syntax */
 // SCULL_QUANTUM and SCULL_QSET in scull.h: compile time
 // scull_quantum and scull_qset at modile load time
@@ -275,7 +307,7 @@ struct file_operations scull_fops = {
 	.llseek = scull_llseek,
 	.read = scull_read,
 	.write = scull_write,
-	.ioctl = scull_ioctl,
+	.unlocked_ioctl = scull_ioctl,
 	.open = scull_open,
 	.release = scull_release,
 };
@@ -283,7 +315,7 @@ struct file_operations scull_fops = {
 /* Function: 
  * scull_setup_cdev
  */
-static void scull_setup_cdev(struct scull_dev *dev, int index)
+static void scull_setup_cdev(scull_dev *dev, int index)
 {
 	int err, devno = MKDEV(scull_major, MINOR_START + index);
 
@@ -297,7 +329,7 @@ static void scull_setup_cdev(struct scull_dev *dev, int index)
 
 	/* Fail gracefully if need be */
 	if (err)
-		pr_alert("Error %d adding scull%d", err, index);
+		PDEBUG("Error %d adding scull%d", err, index);
 }
 
 static int __init my_module_init(void)
@@ -308,15 +340,15 @@ static int __init my_module_init(void)
 
 	dev_t first;
 
-	pr_alert("scull_major		= %d\n", scull_major);
-	pr_alert("cb_value 		= %d\n", cb_value);
-	pr_alert("char_ptr		= %s\n", char_ptr);
+	PDEBUG("scull_major		= %d\n", scull_major);
+	PDEBUG("cb_value 		= %d\n", cb_value);
+	PDEBUG("char_ptr		= %s\n", char_ptr);
 
 	for (i = 0; i < (sizeof int_arr / sizeof (int)); i++) {
-		pr_alert("int_arr[%d] = %d\n", i, int_arr[i]);
+		PDEBUG("int_arr[%d] = %d\n", i, int_arr[i]);
 	}
 
-	pr_alert("%s %s\n", __FUNCTION__, current->comm);
+	PDEBUG("%s %s\n", __FUNCTION__, current->comm);
 
 
 	if(scull_major) {
@@ -337,9 +369,9 @@ static int __init my_module_init(void)
 	}
 
 	if(ret < 0) {
-		pr_alert("reg fail %d\n", ret);
+		PDEBUG("reg fail %d\n", ret);
 	} else {
-		pr_alert("scull major %d\n", scull_major);
+		PDEBUG("scull major %d\n", scull_major);
 	}
 
 	scull_setup_cdev(&sdev, 0);
@@ -352,10 +384,10 @@ static void __exit my_module_exit(void)
 {
 	dev_t first = MKDEV (scull_major, MINOR_START);
 
-	pr_alert("%s %s\n", __FUNCTION__, current->comm);
+	PDEBUG("%s %s\n", __FUNCTION__, current->comm);
 
 	/* removed char device from kernel/system*/
-	cdev_del(&sdev->cdev);
+	cdev_del(&sdev.cdev);
 
 	unregister_chrdev_region (
 			first,
