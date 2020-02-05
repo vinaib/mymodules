@@ -1,0 +1,30 @@
+--------------------------------------------------------------------------------
+Implementing files in /proc
+--------------------------------------------------------------------------------
+-> All modules that work with /proc should include <linux/proc_fs.h> to define
+the proper functions.
+
+-> When a process reads from your /proc file, the kernel allocates a page of
+memory (i.e.,PAGE_SIZE bytes) where the driver can write data to be returned to
+user space. 
+That buffer is passed to your function, which is a method called read_proc: 
+
+int (*read_proc)(
+ char *page, //page pointer is the buffer where you’ll write your data
+ char **start,  //start is used by the function to say where the interesting
+		//  data has been written in page.
+ off_t offset, // offset and count have the same meaning as for the read method
+ int count,
+ int *eof, //set by the driver to signal that it has no more data to return. 
+ void *data); //data is a driver-specific data pointer
+
+returns: number of bytes of data actually placed in the page buffer
+
+Other usages of *start
+--------------------------------------------------------------------------------
+-> its purpose is to help with the implementation of large (greater than one
+page) /proc files.
+
+
+
+
