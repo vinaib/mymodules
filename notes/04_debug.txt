@@ -49,3 +49,41 @@ send messages to a specific virtual console.
 By default,the “console” is the current virtual terminal. To select a different
 virtual terminal to receive messages, you can issue ioctl(TIOCLINUX) on any
 console device.
+
+cat /proc/kmsg:  you can try this after stopping klogd.
+-------------------------------------------------------------------------------
+you’ll find that the /proc file looks like a FIFO, in that the reader blocks,
+waiting for more data.
+
+Working of printk
+--------------------------------------------------------------------------------
+-> The printk function writes messages into a circular buffer that is
+__LOG_BUF_LEN bytes long: a value from 4 KB to 1 MB chosen while configuring the
+kernel.
+
+-> The function then wakes any process that is waiting for messages, that is,
+any process that is sleeping in the syslog system call or that is
+reading /proc/kmsg.
+
+-> but note that reading from /proc/kmsg consumes the data from the log buffer,
+whereas the syslog system call can optionally return log data while
+leaving it for other processes as well.
+
+-> If the circular buffer fills up, printk wraps around and starts adding new
+data to the beginning of the buffer, overwriting the oldest data.
+
+-> Another feature of the Linux approach to messaging is that printk can be
+invoked from anywhere, even from an interrupt handler, with no limit on how much
+data can be printed. The only disadvantage is the possibility of losing some
+data.
+
+->If the klogd process is running, it retrieves kernel messages and dispatches
+them to syslogd, which in turn checks /etc/syslog.conf to find out how to deal
+with them. syslogd differentiates between messages according to a facility and a
+priority; allowable values for both the facility and the priority are defined in
+<sys/syslog.h>. Kernel messages are logged by the LOG_KERN facility at a
+priority corresponding to the one used in printk (for example, LOG_ERR is used
+for KERN_ERR messages). If klogd isn’t running, data remains in
+the circular buffer until someone reads it or the buffer overflows.
+
+
