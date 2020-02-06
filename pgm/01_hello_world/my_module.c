@@ -10,6 +10,7 @@
 #include<linux/fs.h>			/* chardev_region */
 #include<linux/slab.h>			/* kmalloc/kfree */
 #include<linux/uaccess.h>		/* copy_to/from_user */
+#include<linux/semaphore.h>		/* for semaphores */
 
 #include"my_module.h"
 
@@ -24,6 +25,7 @@
 int 	scull_major;
 int	scull_quantum = SCULL_QUANTUM;
 int	scull_qset = SCULL_QSET;
+int	scull_nr_devs = SCULL_NR_DEVS;
 int	int_arr[4];
 char 	*char_ptr;
 int 	cb_value = 0;
@@ -74,7 +76,7 @@ module_param_cb(cb_value, &my_param_ops, &cb_value, S_IRUSR|S_IWUSR );
 
 /* Global dev structure
  */
-scull_dev sdev;
+scull_dev *scull_devices;
 
 /* Function: 
  * scull_trim is also used in the module cleanup function to return memory used
@@ -241,6 +243,7 @@ loff_t *f_pos)
 		goto out;
 
 	if (!dptr->data) {
+		/* allocate 1000 bytes */
 		dptr->data = kmalloc(qset * sizeof(char *), GFP_KERNEL);
 		if (!dptr->data)
 			goto out;
@@ -248,6 +251,7 @@ loff_t *f_pos)
 		memset(dptr->data, 0, qset * sizeof(char *));
 	}
 
+	/* alocate 4000 bytes */
 	if (!dptr->data[s_pos]) {
 		dptr->data[s_pos] = kmalloc(quantum, GFP_KERNEL);
 		if (!dptr->data[s_pos])
@@ -374,20 +378,54 @@ static int __init my_module_init(void)
 		PDEBUG("scull major %d\n", scull_major);
 	}
 
-	scull_setup_cdev(&sdev, 0);
+	scull_devices = kmalloc(scull_nr_devs * sizeof(scull_dev),
+				GFP_KERNEL);
 
+	if(!scull_devices) {
+		ret = -ENOMEM;
+		goto fail;
+	}
+
+	memset(scull_devices, 0, scull_nr_devs * sizeof(scull_dev));
+
+	for(i=0; i<scull_nr_devs; i++) {
+		scull_devices[i].quantum = scull_quantum;
+
+		scull_devices[i].qset = scull_qset;
+
+		//Mutex
+		sema_init(&scull_devices[i].sem, 1);
+		//or
+		//init_MUTEX(&scull_devices[i].sem);
+
+		scull_setup_cdev(&scull_devices[i], i);
+	}
+
+
+fail:
 	/* returning negative value fails to insmod */
 	return ret;
 }
 
 static void __exit my_module_exit(void)
 {
+	int i = 0;
+
 	dev_t first = MKDEV (scull_major, MINOR_START);
 
 	PDEBUG("%s %s\n", __FUNCTION__, current->comm);
 
-	/* removed char device from kernel/system*/
-	cdev_del(&sdev.cdev);
+	if(scull_devices) {
+		for(i=0; i<scull_nr_devs; i++) {
+
+			scull_trim(scull_devices+i);
+
+			/* removed char device from kernel/system*/
+			cdev_del(&scull_devices[i].cdev);
+		}
+
+		kfree(scull_devices);
+	}
 
 	unregister_chrdev_region (
 			first,

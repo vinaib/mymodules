@@ -6,6 +6,7 @@
 #define MINOR_LAST 	3
 #define MINOR_COUNT	4
 #define DEV_NAME	"scull_char"
+#define SCULL_NR_DEVS	4
 
 /*
  * Macros to help debugging
