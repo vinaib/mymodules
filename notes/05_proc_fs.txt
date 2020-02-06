@@ -25,6 +25,36 @@ Other usages of *start
 -> its purpose is to help with the implementation of large (greater than one
 page) /proc files.
 
+--------------------------------------------------------------------------------
+Creating your /proc file:
+--------------------------------------------------------------------------------
+struct proc_dir_entry *create_proc_read_entry(
+		const char *name,
+		mode_t mode, 
+		struct proc_dir_entry *base,
+		read_proc_t *read_proc, 
+		void *data);
+
+-> The directory entry pointer can be used to create entire directory
+hierarchies under /proc. Note, however, that an entry may be more easily placed
+in a subdirectory of /proc simply by giving the directory name as part of the
+name of the entry—as long as the directory itself already exists.
+
+remove_proc_entry:
+--------------------------------------------------------------------------------
+Entries in /proc, should be removed when the module is unloaded.
+
+Issues with proc: removal of /proc entries.
+--------------------------------------------------------------------------------
+1) As there is no owner associated to /proc entries, so using them doesn’t act
+on the module’s reference count. This problem is simply triggered by running
+sleep 100 < /proc/myfile just before removing the module.
+
+2) Another issue is about registering two entries with the same name, both when
+you access them and when you call remove_proc_entry.
+
+
+
 
 
 

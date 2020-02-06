@@ -1,0 +1,62 @@
+--------------------------------------------------------------------------------
+seq_file: <linux/seq_file.h>
+--------------------------------------------------------------------------------
+-> create four iterator methods:
+start
+next
+stop
+show
+
+start:
+------
+The start method is always called first. prototype for this function is:
+void *start(struct seq_file *sfile, loff_t *pos)
+# The sfile argument can almost always be ignored
+# pos is an integer position indicating where the reading should start
+
+The return value, if non- NULL , is a private value that can be used by the
+iterator implementation.
+
+next:
+-----
+The next function should move the iterator to the next position, returning NULL if
+there is nothing left in the sequence. 
+
+This method’s prototype is:
+void *next(struct seq_file *sfile, void *v, loff_t *pos);
+
+# v is the iterator as returned from the previous call to start or next
+# pos is the current position in the file. 
+# next should increment the value pointed to by pos
+
+stop:
+-----
+When the kernel is done with the iterator, it calls stop to clean up:
+void stop(struct seq_file *sfile, void *v);
+
+show:
+-----
+In between these calls, the kernel calls the show method to actually output
+something interesting to the user space.
+
+int show(struct seq_file *sfile, void *v);
+
+This method should create output for the item in the sequence indicated by the
+iterator v . It should not use printk, however; instead, there is a special set
+of functions for seq_file output:
+
+int seq_printf(struct seq_file *sfile, const char *fmt, ...);
+int seq_putc(struct seq_file *sfile, char c);
+int seq_puts(struct seq_file *sfile, const char *s);
+int seq_escape(struct seq_file *m, const char *s, const char *esc);
+int seq_path(struct seq_file *sfile, struct vfsmount *m, struct dentry
+*dentry, char *esc);
+
+static struct seq_operations scull_seq_ops = {
+.start = scull_seq_start,
+.next = scull_seq_next,
+.stop = scull_seq_stop,
+.show = scull_seq_show
+};
+
+Visit later 
