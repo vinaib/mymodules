@@ -1,6 +1,6 @@
  #!/bin/sh
- module="scull"
- device="scull"
+ module="scull_char"
+ device="scull_char"
  
  # invoke rmmod with all arguments we got
  /sbin/rmmod $module $* || exit 1

@@ -1,4 +1,5 @@
 #!/bin/sh
+
 module="scull_char"
 device="scull_char"
 mode="664"
@@ -7,7 +8,8 @@ mode="664"
 /sbin/insmod ./$module.ko $* || exit 1
 # remove stale nodes
 rm -f /dev/${device}[0-3]
-major=$(awk "\\$2= =\"$module\" {print \\$1}" /proc/devices)
+#major=$(awk "$2= =\"$module\"{print $1}" /proc/devices)
+major=`cat /proc/devices | awk "\\$2==\"$module\" {print \\$1}"`
 mknod /dev/${device}0 c $major 0
 mknod /dev/${device}1 c $major 1
 mknod /dev/${device}2 c $major 2
