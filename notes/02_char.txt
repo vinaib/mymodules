@@ -28,8 +28,8 @@ register_chrdev_region works well if you know ahead of time exactly which device
 numbers you want.
 
 first: beginning device number of the range you would like to allocate
-	minor: most often 0
-	major: ?
+	minor: minor number portion of first is most often 0
+	major: user has to choose cautiosly 
 count: total number of contiguous device numbers you are requesting.
 name: name is the name of the device. It will appear in /proc/devices and sysfs
       (/sys/dev/char/).
@@ -60,7 +60,6 @@ void unregister_chrdev_region(dev_t first, unsigned int count);
   unregister_chrdev_region.
 
 # usual place to call would be in your module’s cleanup function
-
 
 --------------------------------------------------------------------------------
 Three important Data Structures: file_operations, file, inode <linux/fs.h>
@@ -185,13 +184,12 @@ problems)
 # The first order of business, however, is usually to identify which device is being
 opened. is it my device requested? Inode have the i_cdev which contains the cdev
 struct we setup/added before through cdev_add(); The only problem is that we do
-not normally want the cdev structure itself, we want the scull_devl structure
+not normally want the cdev structure itself, we want the scull_dev structure
 that contains the cdev structure.
 
 struct scull_dev *sdevp;
 	sdevp = container_of(inode->i_cdev, struct scull_dev, cdev);
 filp->private_data = dev
-
 
 --------------------------------------------------------------------------------
 The Release Method: int (*release)(struct inode *inode, struct file *filp);

@@ -366,7 +366,7 @@ Pros of userspace drivers
 
 Examples:  
 # USB drivers can be written for user space;
-  see the (still young) libusb project at libusb.sourceforge.net.
+  see the libusb project at libusb.sourceforge.net.
 # “gadgetfs” in the kernel source. 
 # Another example is the X server: 
 

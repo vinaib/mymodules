@@ -16,21 +16,22 @@ Sources of concurrency:
 # The kernel also provides various mechanisms for delayed code execution, such
  as workqueues, tasklets, and timers, which can cause your code to run at any
  time
-# Due to hot pluggable: your device couls simply disappear in middle of working
+# Due to hot pluggable: your device could simply disappear in middle of working
   with it.
 
 Principles for avoiding race conditions
 ---------------------------------------
-1) first rule of thumb to keep on mind as you design your driver is to avoid
-shared resources whenever possible. If there is no concurrent access, there can
-be no race conditions.
-	So carefully written kernel code should have a minimum of sharing. The
-most obvious application of this idea is to avoid the use of global variables.
-							     ----------------
+1) first rule of thumb: (Avoid shared resources, use of global variables)
+-> to keep on mind as you design your driver is to avoid shared resources
+whenever possible. If there is no concurrent access, there can be no race
+conditions.	So carefully written kernel code should have a minimum of sharing.
+Themost obvious application of this idea is to avoid the use of global
+variables.
+
 If you put a resource in a place where more than one thread of execution can
 find it, there should be a strong reason for doing so.
 
-2) Other important rule to consider i, when kernel code creates an object that
+2) Other important rule to consider is, when kernel code creates an object that
 will be shared with any other part of the kernel, that object must continue to
 exist (and function properly) until it is known that no outside references to it
 exist.
@@ -140,6 +141,93 @@ only one) call to up.
 Special care is often required in error paths; if an error is encountered while
 a semaphore is held, that semaphore must be released before returning the error
 status to the caller.
+
+--------------------------------------------------------------------------------
+Reader/Writer Semaphores: <linux/rwsem.h>
+--------------------------------------------------------------------------------
+-> Allows multiple concurrent readers, as long as nobody is trying to make any
+changes.
+
+-> An rwsem allows either one writer or an unlimited number of readers to hold
+the semaphore.
+
+Writers get priority; as soon as a writer tries to enter the critical section,no
+readers will be allowed in until all writers have completed their work. This
+implementation can lead to reader starvation where readers are denied access for
+a long time. if you have a large number of writers contending for the semaphore.
+
+-> rwsems are best used when write access is required only rarely, and writer
+access is held for short periods of time.
+
+-> linux kernel provides a special type of semaphore called a rwsem for this
+situation. The use of rwsems in drivers is relatively rare.
+
+-> struct rw_semaphore
+   void init_rwem(struct rw_semaphore *sem);
+
+-> An initialized rwsem is available for usage.
+
+--------------------------------------------------------------------------------
+Interface for read only access, possibly concurrently with other readers.
+--------------------------------------------------------------------------------
+void down_read(struct rw_semaphore *sem);
+int down_read_trylock(struct rw_semaphore *sem);
+void up_read(struct rw_semaphore *sem);
+
+-> Note that down_read may put the calling process into an uninterruptible
+sleep.
+
+-> down_read_trylock will not wait if read access is unavailable.it returns
+nonzero if access was granted, 0 otherwise.
+
+-> freed with up_read
+
+--------------------------------------------------------------------------------
+Interface for writer
+--------------------------------------------------------------------------------
+void down_write(struct rw_semaphore *sem);
+int down_write_trylock(struct rw_semaphore *sem);
+void up_write(struct rw_semaphore *sem);
+void downgrade_write(struct rw_semaphore *sem);
+
+-> down_write, down_write_trylock, and up_write all behave just like their
+reader counterparts, except, of course, that they provide write access.
+
+-> If you have a situation where a writer lock is needed for a quick change,
+followed by a longer period of read-only access, you can use downgrade_write
+to allow other readers in once you have finished making changes.
+
+--------------------------------------------------------------------------------
+Completions: <linux/completion.h>
+--------------------------------------------------------------------------------
+A common pattern in kernel programming involves initiating some activity outside
+of the current thread, then waiting for that activity to complete.
+
+Completions are a lightweight mechanism with one task: allowing one thread to
+tell another that the job is done.
+
+Interface:
+-> DECLARE_COMPLETION(my_completion);
+-> if the completion must be created and initialized dynamically:
+	struct completion my_completion;
+	init_completion(&my_completion);
+-> Waiting for the completion is a simple matter of calling
+	void wait_for_completion(struct completion *c);
+-> this function performs an uninterruptible wait. If your code calls wait_for_
+completion and nobody ever completes the task, the result will be an unkillable
+process.
+-> completion event may be signalled by calling one of the following:
+void complete(struct completion *c);
+void complete_all(struct completion *c);
+
+-> A completion is normally a one-shot device; it is used once then discarded.
+
+-> It is possible, however, to reuse completion structures if proper care is
+taken.
+
+-> The macro INIT_COMPLETION(sturct completion c) can be used to quickly perform
+this reinitialization.
+
 
 
 

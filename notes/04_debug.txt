@@ -1,6 +1,6 @@
 DEFAULT_MESSAGE_LOGLEVEL: "kernel/printk.c" 
 --------------------------------------------------------------------------------
-1) A printk statement with no specified priority defaults to above option
+1) A printk statement with no specified priority defaults to option
 (KERN_WARNING)
 
 2) If both klogd and sys-logd are running on the system, kernel messages are
@@ -8,6 +8,9 @@ appended to /var/log/messages.
 
 3) If klogd is not running, the message won’t reach user space unless you read
 /proc/kmsg (which is often most easily done with the dmesg command).
+
+sudo cat /proc/kmsg : cat will block on kmsg, any new message from kernel will
+be dumped to output
 
 (log_level vs console_log_level):
 +++++++++++++++++++++++++++++++++++
