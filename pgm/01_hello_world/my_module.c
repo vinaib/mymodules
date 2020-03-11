@@ -354,8 +354,10 @@ static int __init my_module_init(void)
 
 	PDEBUG("%s %s\n", __FUNCTION__, current->comm);
 
-
 	if(scull_major) {
+		/* static allocation of device numbers
+		 * first is input parameter
+		 */
 		first = MKDEV (scull_major, MINOR_START);
 
 		ret = register_chrdev_region (
@@ -363,6 +365,10 @@ static int __init my_module_init(void)
 			MINOR_COUNT,
 			DEV_NAME );
 	} else {
+		/* dynamic allocation of device numbers
+		 * -> first is output parameter
+		 * -> this style is preferred
+		 */
 		ret = alloc_chrdev_region (
 				&first,
 				MINOR_START,
@@ -394,13 +400,18 @@ static int __init my_module_init(void)
 		scull_devices[i].qset = scull_qset;
 
 		//Mutex
+		// if value is 1, then it is equivalent to mutex
 		sema_init(&scull_devices[i].sem, 1);
 		//or
 		//init_MUTEX(&scull_devices[i].sem);
 
+		/* for each minor number do:
+		 * -> cdev_init(&dev->cdev, &scull_fops);
+		 * -> cdev_add()
+		 * which means each minor number can have different fops
+		 */
 		scull_setup_cdev(&scull_devices[i], i);
 	}
-
 
 fail:
 	/* returning negative value fails to insmod */
