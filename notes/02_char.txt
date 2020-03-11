@@ -369,6 +369,40 @@ to the driver’s read or write function. Often, however, efficient and correct
 behavior requires that the driver do something smarter.
 
 --------------------------------------------------------------------------------
+ioctl: 
+--------------------------------------------------------------------------------
+-> IOCTL is a common interface for device control
+
+-> In user space, the ioctl system call has the following prototype:
+	int ioctl(int fd, unsigned long cmd, ...);
+	
+	The third argument does not represents variable arguments, but a single
+	optional argument, traditionally identified as char *argp.
+
+	The actual nature of the third argument depends on the specific control
+	command being issued (the second argument). Some commands take no arguments,
+	some take an integer value, and some take a pointer to other data.
+
+-> The ioctl driver method prototype 
+	int (*ioctl) (struct inode *inode, struct file *filp, unsigned int cmd,
+			unsigned long arg);
+
+-> The inode and filp pointers are the values corresponding to the file
+descriptor fd passed on by the application and are the same parameters passed to
+the open method.
+
+-> The cmd argument is passed from the user unchanged, 
+
+-> and the optional arg argument is passed in the form of an unsigned long ,
+regardless of whether it was given by the user as an integer or a pointer.
+If the invoking program doesn’t pass a third argument, the arg value
+received by the driver operation is undefined. Because type checking is
+disabled on the extra argument.
+
+
+
+
+--------------------------------------------------------------------------------
 ioctl: unlocked_ioctl/compat_ioctl
 --------------------------------------------------------------------------------
 source: https://lwn.net/Articles/119652/
@@ -446,3 +480,5 @@ common to all drivers. The vfs layer first calls ->compat_ioctl and if that does
 not exist or returns -ENOIOCTLCMD, it scans the list of known conversions
 between 32 and 64 bit ioctls and if it finds a valid conversion, it enters the
 native 64 bit ->unlocked_ioctl/->ioctl path.
+
+

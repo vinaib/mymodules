@@ -228,6 +228,55 @@ taken.
 -> The macro INIT_COMPLETION(sturct completion c) can be used to quickly perform
 this reinitialization.
 
+--------------------------------------------------------------------------------
+Spinlock: <linux/spinlock.h>
+--------------------------------------------------------------------------------
+-> A spinlock is a mutual exclusion device that can have only two values:
+“locked” and “unlocked.”.
 
+-> It is usually implemented as a single bit in an integer value.
 
+-> Code wishing to take out a particular lock tests the relevant bit. If the
+lock is available, the “locked” bit is set and the code continues into the
+critical section. If, instead, the lock has been taken by somebody else, the
+code goes into a tight loop where it repeatedly checks the lock until it becomes
+available. This loop is the “spin” part of a spinlock.
+
+-> the real implementation of a spinlock is a bit more complex than the
+description above. The “test and set” operation must be done in an atomic
+manner so that only one thread can obtain the lock, even if several are spinning
+at any given time.
+
+-> when there is contention for a spinlock, the processors that are waiting
+execute a tight loop and accomplish no useful work.
+
+-> Spinlocks are, by their nature, intended for use on multiprocessor systems
+
+-> although a uniprocessor workstation running a preemptive kernel behaves like
+SMP, as far as concurrency is concerned.
+
+-> If a nonpreemptive uniprocessor system ever went into a spin on a lock, it
+would spin forever; no other thread would ever be able to obtain the CPU to
+release the lock.
+
+-> For this reason, spinlock operations on uniprocessor systems without
+preemption enabled are optimized to do nothing, with the exception of the ones
+that change the IRQ masking status.
+
+Interface:
+
+# Compile time:
+spinlock_t my_lock = SPIN_LOCK_UNLOCKED;
+
+# run time:
+void spin_lock_init(spinlock_t *lock);
+
+# Before entering a critical section, your code must obtain the requisite lock with
+void spin_lock(spinlock_t *lock);
+
+# Note that all spinlock waits are, by their nature, uninterruptible. Once you
+ call spin_lock, you will spin until the lock becomes available.
+
+# To release a lock that you have obtained, pass it to: 
+ void spin_unlock(spinlock_t *lock);
 
