@@ -399,8 +399,226 @@ If the invoking program doesn’t pass a third argument, the arg value
 received by the driver operation is undefined. Because type checking is
 disabled on the extra argument.
 
+--------------------------------------------------------------------------------
+Choosing the ioctl commands: 
+--------------------------------------------------------------------------------
+The ioctl command numbers should be unique across the system in order to prevent
+errors caused by issuing the right command to the wrong device.
+like eg: change baud rate of an audio device
 
+If each ioctl number is unique, the application gets an EINVAL error rather than
+succeeding in doing something unintended.
 
+include/uapi/asm-generic/ioctl.h
+Documentation/ioctl/ioctl-number.txt
+
+--------------------------------------------------------------------------------
+Return value
+--------------------------------------------------------------------------------
+If user issues invalid command then 
+-EINVAL (invalid argument)
+But as per posix standard -ENOTTY should be returned. This error code is
+interpreted by the C library as "inappropriate ioctl for device".
+
+--------------------------------------------------------------------------------
+The predefined commands
+--------------------------------------------------------------------------------
+Although the ioctl system call is most often used to act on devices, a few
+commands are recognized by the kernel. Note that these commands, when applied to
+your device, are decoded before your own file operations are called. Thus, if
+you choose the same number for one of your ioctl commands, you won’t ever see
+any request for that command, and the application gets something unexpected
+because of the conflict between the ioctl numbers.
+
+The predefined commands are divided into three groups:
+• Those that can be issued on any file (regular, device, FIFO, or socket)
+• Those that are issued only on regular files
+• Those specific to the filesystem type
+
+The following ioctl commands are predefined for any file, including device-special
+files:
+FIOCLEX
+FIONCLEX
+FIOASYNC
+FIOQSIZE
+FIONBIO
+
+--------------------------------------------------------------------------------
+Using the ioctl Argument
+--------------------------------------------------------------------------------
+-> If argument is an integer, it can be used directly
+
+-> If it is a pointer, some care must be taken
+When a pointer is used to refer to user space, we must ensure that the user
+address is valid. An attempt to access an unverified user-supplied pointer can
+lead to incorrect behavior, a kernel oops, system corruption, or security
+problems. It is the driver’s responsibility to make proper checks on every
+user-space address it uses and to return an error if it is invalid.
+
+--------------------------------------------------------------------------------
+Address verification: access_ok
+--------------------------------------------------------------------------------
+-> copy_from_user and copy_to_user functions, which can be used to safely move
+data to and from user space. Those functions can be used in ioctl methods as
+well, but ioctl calls often involbe small data items that can be more
+efficiently manipulated through other means.
+
+-> To start, address verification (without transferring data) is implemented by
+the function access_ok, which is declared in <asm/uaccess.h>: 
+
+int access_ok(int type, const void *addr, unsigned long size);
+
+-> The first argument should be either VERIFY_READ or VERIFY_WRITE , depending
+on whether the action to be performed is reading the user-space memory area or
+writing it.
+
+-> The addr argument holds a user-space address
+
+-> size is a byte count
+
+-> If ioctl,for instance, needs to read an integer value from user space, size
+is sizeof(int). 
+
+-> If you need to both read and write at the given address, use VERIFY_WRITE ,
+since it is a superset of VERIFY_READ.
+
+-> Unlike most kernel functions, access_ok returns a boolean value: 1 for
+success (access is OK) and 0 for failure (access is not OK). If it returns
+false, the driver should usually return -EFAULT to the caller.
+
+-> There are a couple of interesting things to note about access_ok. 
+# First, it does not do the complete job of verifying memory access; it only
+checks to see that the memory reference is in a region of memory that the
+process might reasonably have access to. In particular, access_ok ensures that
+the address does not point to kernel-space memory.
+
+# Second, most driver code need not actually call access_ok. The memory-access
+routines described later take care of that for you.
+
+The scull source exploits the bitfields in the ioctl number to check the
+arguments before the switch:
+
+int err = 0, tmp;
+int retval = 0;
+
+/*
+* extract the type and number bitfields, and don't decode
+* wrong cmds: return ENOTTY (inappropriate ioctl) before access_ok( )
+*/
+if (_IOC_TYPE(cmd) != SCULL_IOC_MAGIC) 
+	return -ENOTTY;
+
+if (_IOC_NR(cmd) > SCULL_IOC_MAXNR) 
+	return -ENOTTY;
+
+/*
+* the direction is a bitmask, and VERIFY_WRITE catches R/W
+* transfers. `Type' is user-oriented, while
+* access_ok is kernel-oriented, so the concept of "read" and
+* "write" is reversed
+*/
+if (_IOC_DIR(cmd) & _IOC_READ)
+	err = !access_ok(VERIFY_WRITE, (void __user *)arg, _IOC_SIZE(cmd));
+else if (_IOC_DIR(cmd) & _IOC_WRITE)
+	err = !access_ok(VERIFY_READ, (void __user *)arg, _IOC_SIZE(cmd));
+if (err) 
+	return -EFAULT;
+
+After calling access_ok, the driver can safely perform the actual transfer. In
+addition to the copy_from_user and copy_to_user functions, the programmer can
+exploit a set of functions that are optimized for the most used data sizes (one,
+two, four, and eight bytes). These functions are described in the following list
+and are defined in <asm/uaccess.h>:
+
+--------------------------------------------------------------------------------
+put_user(datum, ptr)		// Performs access_ok
+__put_user(datum, ptr)		// skips access_ok
+--------------------------------------------------------------------------------
+These macros write the datum to user space; they are relatively fast and should
+be called instead of copy_to_user whenever single values are being transferred.
+The macros have been written to allow the passing of any type of pointer to
+put_user,as long as it is a user-space address. 
+
+The size of the data transfer depends on the type of the ptr argument and is
+determined at compile time using the sizeof and typeof compiler builtins.
+
+As a result, if ptr is a char pointer, one byte is transferred, and so on for
+two, four, and possibly eight bytes.
+
+put_user checks to ensure that the process is able to write to the given
+memory address. It returns 0 on success, and -EFAULT on error.
+
+__put_user performs less checking (it does not call access_ok), but can still
+fail if the memory pointed to is not writable by the user. Thus, __put_user
+should only be used if the memory region has already been verified with
+access_ok.
+
+--------------------------------------------------------------------------------
+get_user(local, ptr)		// Performs access_ok
+__get_user(local, ptr)		// skips access_ok
+--------------------------------------------------------------------------------
+These macros are used to retrieve a single datum from user space. Again,
+ __get_user should only be used if the address has already been verified
+ with access_ok.
+
+If an attempt is made to use one of the listed functions to transfer a value
+that does not fit one of the specific sizes, the result is usually a strange
+message from the compiler, such as “conversion to non-scalar type requested.” In
+such cases, copy_to_user or copy_from_user must be used.
+
+--------------------------------------------------------------------------------
+Capabilities and Restricted Operations: <linux/capability.h>
+--------------------------------------------------------------------------------
+Access to a device is controlled by the permissions on the device file(s), and
+the driver is not normally involved in permissions checking.
+
+If user is granted read/write permission on the device, but some control
+operations should still be denied.
+
+For example, not all users of a tape drive should be able to set its default
+block size, and a user who has been granted read/write access to a disk device
+should probably still be denied the ability to format it.
+
+In cases like these, the driver must perform additional checks to be sure that
+the user is capable of performing the requested operation.
+
+Unix vs Linux Capabilities:
+Unix:
+Unix systems have traditionally restricted privileged operations to the
+superuser account. This meant that privilege was an all-or-nothing thing—the
+superuser can do absolutely anything, but all other users are highly restricted.
+
+Linux:
+The Linux kernel provides a more flexible system called capabilities. A
+capability-based system leaves the all-or-nothing mode behind and breaks down
+privileged operations into separate subgroups. In this way, a particular user
+(or program) can be empowered to perform a specific privileged operation without
+giving away the ability to perform other, unrelated operations.
+
+The kernel uses capabilities exclusively for permissions management and exports
+two system calls capget and capset, to allow them to be managed from user space.
+
+The full set of capabilities can be found in <linux/capability.h>. These are the
+only capabilities known to the system; it is not possible for driver authors or
+system administrators to define new ones without modifying the kernel source.
+
+CAP_DAC_OVERRIDE: Data access control
+CAP_NET_ADMIN:
+CAP_SYS_MODULE: The ability to load or remove kernel modules.
+CAP_SYS_RAWIO:
+CAP_SYS_ADMIN:
+CAP_SYS_TTY_CONFIG:
+
+Before performing a privileged operation, a device driver should check that the
+calling process has the appropriate capability; failure to do so could result
+user processes performing unauthorized operations with bad results on system
+stability or security. Capability checks are performed with the capable function
+(defined in <linux/sched.h>):
+
+int capable(int capability);
+
+if (! capable (CAP_SYS_ADMIN))
+	return -EPERM;
 
 --------------------------------------------------------------------------------
 ioctl: unlocked_ioctl/compat_ioctl
