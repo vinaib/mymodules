@@ -699,4 +699,166 @@ not exist or returns -ENOIOCTLCMD, it scans the list of known conversions
 between 32 and 64 bit ioctls and if it finds a valid conversion, it enters the
 native 64 bit ->unlocked_ioctl/->ioctl path.
 
+--------------------------------------------------------------------------------
+Blocking I/O
+--------------------------------------------------------------------------------
+# Rules to be followed before keeping a process to sleep.
+
+-> never sleep when you are running in an atomic context.
+
+is that your driver cannot sleep while holding a spinlock, seqlock, or RCU lock.
+You also cannot sleep if you have disabled interrupts. It is legal to sleep
+while holding a semaphore, but you should look very carefully at any code that
+does so. If code sleeps while holding a semaphore, any other thread waiting for
+that semaphore also sleeps. So any sleeps that happen while holding semaphores
+should be short.
+
+-> after wakeup check for condition you were waiting for
+
+when you wake up, you never know how long your process may have been out of the
+CPU or what may have changed in the mean time. You also do not usually know if
+another process may have been sleeping for the same event; that process may wake
+before you and grab whatever resource you were waiting for. The end result is
+that you can make no assumptions about the state of the system after you wake
+up, and you must check to ensure that the condition you were waiting for is,
+indeed, true.
+
+-> your process cannot sleep unless it is assured that somebody else will wake
+it up.
+Making it possible for your sleeping process to be found is accomplished through
+a data structure called a wait queue. A wait queue is just what it sounds like:
+a list of processes, all waiting for a specific event.
+
+--------------------------------------------------------------------------------
+wait_queue_head_t 
+--------------------------------------------------------------------------------
+In Linux, a wait queue is managed by means of a “wait queue head,” a structure
+of type wait_queue_head_t , which is defined in <linux/wait.h>. A wait queue
+head can be defined and initialized statically with:
+
+## DECLARE_WAIT_QUEUE_HEAD(name);
+
+or dynamicly as follows:
+
+## wait_queue_head_t my_queue;
+## init_waitqueue_head(&my_queue);
+
+--------------------------------------------------------------------------------
+wait_event
+--------------------------------------------------------------------------------
+The simplest way of sleeping on condition in the Linux kernel is a macro called
+wait_event. The forms of wait_event are:
+
+## process is put into an uninterruptible sleep
+wait_event(queue, condition)
+
+## process is interrupted by signals. This returns an integer value that you
+should check; a nonzero value means your sleep was interrupted by some sort
+of signal and driver probably return -ERESTARTSYS
+wait_event_interruptible(queue, condition)
+
+## wait for a limited time, expressed in jiffies, after that time period
+expires, the macros return with a value of 0 regardless of how condition
+evaluates.
+wait_event_timeout(queue, condition, timeout)
+
+## wait_event_interruptible_timeout(queue, condition, timeout)
+
+### queue is wait_queue_head and it is passed by value
+### condition is an arbitrary boolean expression, i.e evaluated before and after
+sleeping, until condition evaluates to a true value, the process continues to
+sleep.
+
+--------------------------------------------------------------------------------
+wake_up
+--------------------------------------------------------------------------------
+Some other thread of execution, a different process, or an interrupt handler,
+has to perform the wakeup for you.
+
+void wake_up(wait_queue_head_t *queue);
+void wake_up_interruptible(wait_queue_head_t *queue);
+
+-> wake_up wakes up all processes waiting on the given queue.
+-> wake_up and wake_up_interruptible are indistinguishable. 
+-> convention is wake_up for wait_event
+   wake_up_interruptible for wait_event_interruptible
+
+--------------------------------------------------------------------------------
+example:
+--------------------------------------------------------------------------------
+static DECLARE_WAIT_QUEUE_HEAD(wq);
+static int flag = 0;
+
+ssize_t sleepy_read (struct file *filp, char __user *buf, size_t count, loff_t *pos)
+{
+	printk(KERN_DEBUG "process %i (%s) going to sleep\n",
+			current->pid, current->comm);
+	wait_event_interruptible(wq, flag != 0);
+	flag = 0;
+	printk(KERN_DEBUG "awoken %i (%s)\n", current->pid, current->comm);
+	return 0; /* EOF */
+}
+
+ssize_t sleepy_write (struct file *filp, const char __user *buf, size_t count,
+	loff_t *pos)
+{
+	printk(KERN_DEBUG "process %i (%s) awakening the readers...\n",
+	current->pid, current->comm);
+	flag = 1;
+	wake_up_interruptible(&wq);
+	return count; /* succeed, to avoid retrial */
+}
+
+Interesting point from above example:
+--------------------------------------------------------------------------------
+Note the use of the flag variable in this example. Since
+wait_event_interruptible checks for a condition that must become true, we use
+flag to create that condition.
+
+It is interesting to consider what happens if two processes are waiting when
+sleepy_write is called. Since sleepy_read resets flag to 0 once it wakes up, you
+might think that the second process to wake up would immediately go back to
+sleep. On a single-processor system, that is almost always what happens. But it
+is important to understand why you cannot count on that behavior. The
+wake_up_interruptible call will cause both sleeping processes to wake up. It is
+entirely possible that they will both note that flag is nonzero before either
+has the opportunity to reset it. For this trivial module, this race condition is
+unimportant. In a real driver, this kind of race can create rare crashes that
+are difficult to diagnose. If correct operation required that exactly one
+process see the nonzero value, it would have to be tested in an atomic manner.
+
+--------------------------------------------------------------------------------
+Blocking and Nonblocking Operations
+--------------------------------------------------------------------------------
+-> when to put a process to sleep: when there is no I/O data/buffers are
+available.
+
+-> There are also times when the calling process informs you that it does not
+want to block, whether or not its I/O can make any progress at all.
+
+Explicitly nonblocking I/O is indicated by the O_NONBLOCK flag in filp->f_flags
+. The flag is defined in <linux/fcntl.h>, which is automatically included by
+<linux/fs.h>.
+
+Default behavior
+----------------
+The flag is cleared by default, because the normal behavior of a process waiting
+for data is just to sleep.
+
+Blocking behavior
+----------------
+-> Read
+If a process calls read but no data is (yet) available, the process must block.
+The process is awakened as soon as some data arrives, and that data is returned
+to the caller, even if there is less than the amount requested in the count
+argument to the method.
+
+-> Write
+If a process calls write and there is no space in the buffer, the process must
+block, and it must be on a different wait queue from the one used for reading.
+When some data has been written to the hardware device, and space becomes free
+in the output buffer, the process is awakened and the write call succeeds,
+although the data may be only partially written if there isn’t room in the
+buffer for the count bytes that were requested.
+
 
