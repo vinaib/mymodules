@@ -3,6 +3,14 @@
 # swappable.
 --------------------------------------------------------------------------------
 copy_to_user()
+-> the driver can sleep while executing copy_to_user().
+
+-> if driver takes semaphore before copy_to_user() and sleeps, it sleeps with
+the device semaphore held. 
+
+-> Holding the semaphore in this case is justified since it does not deadlock
+the system (we know that the kernel will perform the copy to user space and
+wakes us up without trying to lock the same semaphore in the process).
 
 --------------------------------------------------------------------------------
 # "include/linux/uaccess.h"

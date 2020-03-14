@@ -840,8 +840,8 @@ Explicitly nonblocking I/O is indicated by the O_NONBLOCK flag in filp->f_flags
 . The flag is defined in <linux/fcntl.h>, which is automatically included by
 <linux/fs.h>.
 
-Default behavior
-----------------
+Default behavior: Block
+-----------------------
 The flag is cleared by default, because the normal behavior of a process waiting
 for data is just to sleep.
 
@@ -860,5 +860,21 @@ When some data has been written to the hardware device, and space becomes free
 in the output buffer, the process is awakened and the write call succeeds,
 although the data may be only partially written if there isn’t room in the
 buffer for the count bytes that were requested.
+
+O_NONBLOCK
+----------
+-> The behavior of read and write is different if O_NONBLOCK is specified
+-> Read: returns -EAGAIN if a process calls read when no data is available
+-> write: returns -EAGAIN, when there is no space in the buffer
+-> Open: Usually used when initialization of a device takes time and you may
+choose to support O_NONBLOCK in open method to return immedialtely.
+
+Only Read, write and open are affected by O_NONBLOCK flag.
+
+-ERESTARTSYS
+------------
+the driver returns -ERESTARTSYS to the caller; this value is used internally by
+the virtual filesystem (VFS) layer, which either restarts the system call or
+returns -EINTR to user space.
 
 
