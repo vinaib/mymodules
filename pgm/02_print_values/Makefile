@@ -11,7 +11,7 @@ KSRC=/home/vinait/workplace/kernel.org
 # arm kernel
 KOBJ=/home/vinai/projects/bbb/out/linux
 
-all default: modules
+all default: modules copy
 
 #modules help clean:\
 	make -C $(KSRC)  M=$(PWD) $@
