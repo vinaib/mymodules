@@ -5,10 +5,14 @@
 
 #include<linux/sched/signal.h>
 #include<linux/sched.h>
+#include<linux/mm_types.h>
 
 /* swapper_pg_dir is macro defined in head.S, but not exported by kernel */
 extern int swapper_pg_dir;
 
+extern unsigned long max_low_pfn;
+extern unsigned long min_low_pfn;
+extern unsigned long max_pfn;
 //linux/arch/arm/include/asm/pgtable.h
 
 char *parse_task_state(const long state) 
@@ -35,6 +39,7 @@ char *parse_task_state(const long state)
 	}
 }
 
+
 static int __init my_module_init(void)
 {
 	int ret = 0;
@@ -53,7 +58,15 @@ static int __init my_module_init(void)
 	pr_alert("TASK_UNMAPPED_BASE	 	0x%lx\n", TASK_UNMAPPED_BASE);
 	pr_alert("VECTORS_BASE 				0x%lx\n", VECTORS_BASE);
 	pr_alert("THREAD_SIZE 				0x%lx\n", THREAD_SIZE);
-	pr_alert("swapper_pg_dir			0x%lx\n", swapper_pg_dir);
+	pr_alert("swapper_pg_dir			0x%x\n", swapper_pg_dir);
+	pr_alert("sz of struct page			%d\n", sizeof(struct page));
+
+	//pr_alert("PLAT_PHYS_OFFSET			0x%x\n", PLAT_PHYS_OFFSET);
+
+	//pr_alert("FIX_ADDR_START			0x%x\n", FIX_ADDR_START);
+	//pr_alert("max_pfn					%d\n", max_pfn);
+	//pr_alert("max_low_pfn				%d\n", max_low_pfn);
+	//pr_alert("min_low_pfn				%d\n", min_low_pfn);
 
 	//pr_alert("MODULES_END 				0x%lx\n",  MODULES_END);
 	//pr_alert("PKMAP_BASE 				0x%lx\n",  PKMAP_BASE);
