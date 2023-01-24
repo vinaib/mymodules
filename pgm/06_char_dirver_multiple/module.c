@@ -14,7 +14,7 @@
 #define MINOR_NUM	0
 
 #define MINOR_START 0
-#define MINOR_COUNT 1
+#define MINOR_COUNT 4
 
 #define MYDEVNAME "MyCdev"
 #define CLASS_NAME "MyClass"
@@ -26,17 +26,45 @@
 #undef pr_fmt
 #define pr_fmt(fmt) "%s " fmt,__func__
 
-static struct cdev MyCdev;
-int MajorNumber;
-int MinorNumber;
-
 #ifdef OLDER_KERNEL
 static struct timeval start_time;
 #endif
 
-static struct class *test_class;
 
-char devBuffer[BUFSIZE];
+
+char devBuffer1[BUFSIZE];
+char devBuffer2[BUFSIZE];
+char devBuffer3[BUFSIZE];
+char devBuffer4[BUFSIZE];
+
+struct devPriv {
+	char *buffer;     	// pointer to devBufferx
+	unsigned size;	  	   // size of device Buffer
+	const char *serial; 	// unique serial number
+	int perm;		      // permission
+	struct cdev cdev;	   // cdev 
+	int MinorNumber;     // minor number
+   struct device *dev;
+};
+
+struct drvPriv {
+	int MajorNumber;
+	dev_t DeviceNumber;
+	int32_t TotalDevices;
+	struct devPriv Devices[MINOR_COUNT];
+	struct class *Class;
+};
+
+struct drvPriv drvData = 
+{
+	.TotalDevices = MINOR_COUNT,
+	.Devices = {
+		[0] = {devBuffer1, BUFSIZE, "device1", 0x1},
+		[1] = {devBuffer2, BUFSIZE, "device2", 0x10},
+		[2] = {devBuffer3, BUFSIZE, "device3", 0x11},
+		[3] = {devBuffer4, BUFSIZE, "device4", 0x11}
+	}
+};
 
 /* command to pass module parameter
  *  insmod char_demo.ko int_param=5 
@@ -50,9 +78,21 @@ static int int_param = 10;
  */
 module_param(int_param, int, S_IRUGO);
 
+/*
+ * inode->i_rdev holds deviceNumber. Can be used to identify
+ * which minor device user is trying to access.
+ */
 static int my_dev_open(struct inode *inode, struct file *file)
 {
-	pr_info("is called.\n");
+   int Minor = MINOR(inode->i_rdev);
+
+	pr_info("is called for minor number %d.\n", Minor);
+
+   /* find out on which device file open was attempted by the user space */
+
+   /* get device private data */
+
+   /* check permission */
 	return 0;
 }
 
@@ -183,153 +223,116 @@ static const struct file_operations MyCdevFops = {
 static int __init hello_init(void)
 {
 	int ret;
-	struct device *myDev;
+   int minorDevLoopCount = 0;
 
-	dev_t deviceNumber = MKDEV(MAJOR_NUM, MINOR_NUM);
 #ifdef OLDER_KERNEL
 	do_gettimeofday(&start_time);
 #endif
 
 	pr_info("Hello world init int_param %d\n", int_param);
 
-#if defined(DYNAMIC_DEVICE_CREATION)
 	/* dynamic allocation of device numbers*/
    /* MYDEVNAME is not the device name which gets created in /dev directory.
     * This name is name of this range.
     */
-	ret = alloc_chrdev_region (&deviceNumber, MINOR_START, MINOR_COUNT, MYDEVNAME);
+	ret = alloc_chrdev_region (&drvData.DeviceNumber, MINOR_START, MINOR_COUNT, MYDEVNAME);
 	if(ret < 0) {
 		pr_err("unable to alloc char dev region\n");
       goto EXIT_1;
 	} else {
-		pr_info("alloc is successful major(%d) minor(%d)\n", MAJOR(deviceNumber),
-MINOR(deviceNumber));
-	}
-#else
-	/* static allocation of device numbers */
-	ret = register_chrdev_region(deviceNumber, MINOR_COUNT, MYDEVNAME);
-	if (ret < 0){
-		pr_err("Unable to register  major number %d\n", MAJOR_NUM);
-      goto EXIT_1;
-	} else {
-		pr_info("Registered major number %d Major:Minor %d:%d\n", ret,
-MAJOR(deviceNumber), MINOR(deviceNumber));
-	}
-#endif
-
-   MajorNumber = MAJOR(deviceNumber);
-   MinorNumber = MINOR(deviceNumber);
-
-   // one more way of initializing MyCdevFops structure
-   // MyCdevFops.open = my_dev_open;
-
-	/* Initialize the cdev structure
-    * Initializes cdev->ops(MyCdev) with given fops(MyCdevFops)
-    */
-	cdev_init(&MyCdev, &MyCdevFops);
-   MyCdev.owner = THIS_MODULE;
-
-   /* add it to the kernel space.
-	 * For each minor device, we have to do cdev_init and cdev_add.
-	 * int cdev_add(struct cdev *p, dev_t dev, unsigned count) 
-    * register a device with VFS
-    */
-	ret = cdev_add(&MyCdev, deviceNumber, 1);
-	if (ret < 0){
-		pr_err("Unable to add cdev\n");
-      goto UNREG_CHARDEV;
-	} else {
-		pr_info("cdev_add successfull %d\n", ret);
+		pr_info("alloc is successful major(%d) Baseminor(%d) minorMaxCount(%d)\n", 
+         MAJOR(drvData.DeviceNumber),
+         MINOR(drvData.DeviceNumber),
+         MINOR_COUNT);
 	}
 
-	/* creates the directory in sysfs "/sys/class/<your class name>"
-	 * Creates a class for your devices, and is visible in /sys/class/.
-	 * This entry is necessary so that devtmpfs can create a device node
-	 * under /dev. Drivers will have a class name and device name under /sys
-	 * for each created device.
-    * Path: /sys/class/MyClass/
-    *       /sys/class/MyClass/MyCdev [files: dev, power, susbsystem, uevent]
-    * cat /sys/class/MyClass/MyCdev/uevent 
-    * MAJOR=507
-    * MINOR=0
-    * DEVNAME=MyCdev
-    *
-    * cat /sys/class/MyClass/MyCdev/dev 
-    * 507:0
-    * 
-    * This creates a sysfs entry /sys/class/MyClass. Failure to call this there
-    * will be no entry under /sys/class.
-	 */
-	test_class = class_create(THIS_MODULE, CLASS_NAME);
-   if(IS_ERR(test_class))
+   drvData.MajorNumber = MAJOR(drvData.DeviceNumber);
+
+	drvData.Class = class_create(THIS_MODULE, CLASS_NAME);
+   if(IS_ERR(drvData.Class))
    {
       /* PTR_ERR() converts pointer to error code(int)
        * ERR_PTR() converts error code(int) to pointer
        *
        */
       pr_err("Class creation failed\n");
-      ret = PTR_ERR(test_class);
-      goto CDEV_DEL;
+      ret = PTR_ERR(drvData.Class);
+      goto UNREG_CHARDEV;
    }
 
-	/* device_create api exports the information regarding device such as 
-    * 1) device file name
-    * 2) major number
-    * 3) minor number, to sysfs.
-    *
-    * udev looks for a file called "dev" in the /sys/class tree of sysfs. to 
-    * determine what the major and minor number is assigned to a specific device
-    *
-    * this api creates a sub directory under /sys/class/<your class name>/ with
-    * your device name.
-    *
-    * create a device node named MYDEVNAME associated to dev.
-    * populate the sysfs with device information.
-    * path: /dev/MyCdev
-    * 
-    * This create a device file under /dev/MyCdev. Failure to call this there
-    * will be no entry under /dev nor under /sys/class/MyClass/
+	/* Initialize the cdev structure
+    * Initializes cdev->ops(MyCdev) with given fops(MyCdevFops)
     */
-	myDev = device_create(test_class, NULL, deviceNumber, NULL, MYDEVNAME);
-   if(IS_ERR(myDev))
+   for(minorDevLoopCount = 0; minorDevLoopCount < MINOR_COUNT; minorDevLoopCount++)
    {
-      pr_err("device creation failed\n");
-      ret = PTR_ERR(myDev);
-      goto CLASS_DEL;
+   	cdev_init(&drvData.Devices[minorDevLoopCount].cdev, &MyCdevFops);
+      drvData.Devices[minorDevLoopCount].cdev.owner = THIS_MODULE;
+
+      ret = cdev_add( &drvData.Devices[minorDevLoopCount].cdev,
+                      MKDEV(drvData.MajorNumber,minorDevLoopCount), 
+                      1);
+      if (ret < 0){
+         pr_err("Unable to add cdev\n");
+         goto CDEV_DEL;
+      } else {
+         pr_info("cdev_add successfull %d\n", ret);
+         drvData.Devices[minorDevLoopCount].MinorNumber= minorDevLoopCount;
+      }
+
+      drvData.Devices[minorDevLoopCount].dev = 
+            device_create( drvData.Class, 
+                           NULL, 
+                           MKDEV(drvData.MajorNumber,minorDevLoopCount), 
+                           NULL, 
+                           "MyCdev-%d", 
+                           minorDevLoopCount);
+      if(IS_ERR(drvData.Devices[minorDevLoopCount].dev))
+      {
+         pr_err("device creation failed\n");
+         ret = PTR_ERR(drvData.Devices[minorDevLoopCount].dev);
+         goto CLASS_DEL;
+      }
    }
 
    ret = 0;
 	goto EXIT_1;
 
-CLASS_DEL:
-     class_destroy(test_class);
-
 CDEV_DEL:
-     cdev_del(&MyCdev);
+CLASS_DEL:
+   for(;minorDevLoopCount >= 0; minorDevLoopCount--)
+   {
+      device_destroy(drvData.Class, 
+                     MKDEV(drvData.MajorNumber,minorDevLoopCount));
+      cdev_del(&drvData.Devices[minorDevLoopCount].cdev);
+   }
+   class_destroy(drvData.Class);
 
 UNREG_CHARDEV:
-		unregister_chrdev_region(deviceNumber, 1);
+   unregister_chrdev_region(drvData.DeviceNumber, MINOR_COUNT);
 
-      pr_err("Module insertion failed\n");
+   pr_err("Module insertion failed\n");
 
 EXIT_1:
-		return ret;
+   return ret;
 }
 
 static void __exit hello_exit(void)
 {
+   int minorDevLoopCount = 0;
 #ifdef OLDER_KERNEL
 	struct timeval end_time;
 #endif
 
-	device_destroy(test_class, MKDEV(MajorNumber, MinorNumber));
-
-	class_destroy(test_class);
-
 	/* for each minor device we have to call cdev_del */
-	cdev_del(&MyCdev);
+   for(minorDevLoopCount = 0; minorDevLoopCount < MINOR_COUNT; minorDevLoopCount++)
+   {
+	   device_destroy(drvData.Class, MKDEV(drvData.MajorNumber, minorDevLoopCount));
+   	cdev_del(&drvData.Devices[minorDevLoopCount].cdev);
+   }
 
-	unregister_chrdev_region(MKDEV(MajorNumber, MinorNumber), 1);
+	class_destroy(drvData.Class);
+
+	unregister_chrdev_region(drvData.DeviceNumber, MINOR_COUNT);
 
 #ifdef OLDER_KERNEL
 	do_gettimeofday(&end_time);
