@@ -33,10 +33,16 @@ Data_t* getContainer_a(char *ptr)
    return (Data_t*)((char*)ptr - (char*)offset);
 }
 
+/* Making it more generic, for any data member of any type
+ */
+#define container_of(ptr, type, member) ((type*) ((char *)ptr - (char *)(&((type \
+                                *)0)->member)))
+
 int main(int argc, char *argv[])
 {
    //Data_t *temp = getContainer(&data.c);
-   Data_t *temp = getContainer_a(&data.c);
+   //Data_t *temp = getContainer_a(&data.c);
+   Data_t *temp = container_of(&data.c, Data_t, c);
 
    cout << "address of data: " << &data << "address of member c: " << &data.c
            <<"\n";
