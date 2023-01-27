@@ -7,6 +7,7 @@ CFLAGS=-I.
 #DEPS=app.o
 
 CPPDEPS=app.o
+CONTAINDEPS=container.cpp
 
 #%.o:%.c
 	#$(CC) -c $< -o $@ $(CFLAGS)
@@ -14,7 +15,7 @@ CPPDEPS=app.o
 %.o:%.cpp
 	$(CPP) -c $< -o $@ $(CFLAGS)
 
-app:cppApp
+app:cppApp contain
 
 #app_exe:$(DEPS)
 	#$(CC) -o $@ $^ $(CFLAGS)
@@ -24,5 +25,8 @@ cppApp:$(CPPDEPS)
 	$(CPP) -o $@ $^ 
 	cp $@ /var/lib/tftpboot
 
+contain:$(CONTAINDEPS)
+	$(CPP) -o $@ $^ 
+
 clean:
-	rm -rf app_exe *.o cppApp
+	rm -rf app_exe *.o cppApp contain

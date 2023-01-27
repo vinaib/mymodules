@@ -55,14 +55,18 @@ struct drvPriv {
 	struct class *Class;
 };
 
+#define RDONLY 0x1
+#define WRONLY 0x10
+#define RDWR   0x11
+
 struct drvPriv drvData = 
 {
 	.TotalDevices = MINOR_COUNT,
 	.Devices = {
-		[0] = {devBuffer1, BUFSIZE, "device1", 0x1},
-		[1] = {devBuffer2, BUFSIZE, "device2", 0x10},
-		[2] = {devBuffer3, BUFSIZE, "device3", 0x11},
-		[3] = {devBuffer4, BUFSIZE, "device4", 0x11}
+		[0] = {devBuffer1, BUFSIZE, "device1", RDONLY},
+		[1] = {devBuffer2, BUFSIZE, "device2", WRONLY},
+		[2] = {devBuffer3, BUFSIZE, "device3", RDWR},
+		[3] = {devBuffer4, BUFSIZE, "device4", RDWR}
 	}
 };
 
@@ -78,22 +82,53 @@ static int int_param = 10;
  */
 module_param(int_param, int, S_IRUGO);
 
+static int checkPermission(int devPerm, int accessMode);
+
+static int checkPermission(int devPerm, int accessMode)
+{
+   if(devPerm == RDWR) 
+      return 0;
+   if((devPerm == RDONLY) && ((accessMode & FMODE_READ) && !(accessMode &
+FMODE_WRITE)))
+      return 0;
+   if((devPerm == WRONLY) && ((accessMode & FMODE_WRITE) && !(accessMode &
+FMODE_READ)))
+      return 0;
+   else 
+      return -EPERM;
+}
+
 /*
  * inode->i_rdev holds deviceNumber. Can be used to identify
  * which minor device user is trying to access.
  */
 static int my_dev_open(struct inode *inode, struct file *file)
 {
+   int ret = -1;
    int Minor = MINOR(inode->i_rdev);
+
+   /* find out on which device file open was attempted by the user space */
+   struct devPriv *pDevPriv;
 
 	pr_info("is called for minor number %d.\n", Minor);
 
-   /* find out on which device file open was attempted by the user space */
-
+   /* by using inode->i_cdev we can fetch the device private data structure */
    /* get device private data */
+   pDevPriv = container_of(inode->i_cdev, struct devPriv, cdev);
+
+   /* inode is only available in my_dev_open and my_dev_release methods. In
+    * other file operation methods inode is not available. In other methods too
+    * we need access to device private data. TO achieve this, we need to store
+    * pDevPriv in file->private_data. By storing this information in other fops
+    * method we can access device private data structure.*/
+   file->private_data = pDevPriv;
 
    /* check permission */
-	return 0;
+   ret = checkPermission(pDevPriv->perm, file->f_mode);
+
+   (!ret)?pr_info("open successfull\n"):pr_info("open_unscuccessfull\n");
+
+	return ret;
 }
 
 static int my_dev_release(struct inode *inode, struct file *file)
@@ -110,6 +145,9 @@ static long my_dev_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 static loff_t my_dev_lseek(struct file *file, loff_t offset, int whence)
 {
+   struct devPriv *devData = (struct devPriv*)file->private_data;
+   int maxSize = devData->size;
+
    loff_t temp;
    pr_info("is called current file position is %lld\n", file->f_pos);
 
@@ -117,18 +155,18 @@ static loff_t my_dev_lseek(struct file *file, loff_t offset, int whence)
    {
    case SEEK_CUR:
       temp = file->f_pos + offset;   
-      if(temp > BUFSIZE || temp < 0)
+      if(temp > maxSize || temp < 0)
          return -EINVAL;
       file->f_pos = temp; 
       break;
    case SEEK_SET: 
-      if(offset > BUFSIZE || offset < 0)
+      if(offset > maxSize || offset < 0)
          return -EINVAL;
       file->f_pos = offset; 
       break;
    case SEEK_END: 
       temp = file->f_pos + offset;   
-      if(temp > BUFSIZE || temp < 0)
+      if(temp > maxSize || temp < 0)
          return -EINVAL;
       file->f_pos = temp; 
       break;
@@ -151,17 +189,21 @@ static loff_t my_dev_lseek(struct file *file, loff_t offset, int whence)
  */
 static ssize_t my_dev_read(struct file *file, char __user *buff, size_t count, loff_t *fPos)
 {
+   struct devPriv *devData = (struct devPriv*)file->private_data;
+   int maxSize = devData->size;
+
    pr_info("is called count %ld fpos %lld\n", count, *fPos);
 
+
    /* adjust the count */
-   if((*fPos + count) > BUFSIZE)
+   if((*fPos + count) > maxSize)
    {
-      count = BUFSIZE - *fPos;
+      count = maxSize - *fPos;
    }
 
    /* copy data to user */
    #if 1
-   if(copy_to_user(buff, &devBuffer[*fPos], count))
+   if(copy_to_user(buff, &devData->buffer[*fPos], count))
    {
       /* copy to user failed to copy count bytes, due to access permissions */
       return -EFAULT;
@@ -181,12 +223,15 @@ static ssize_t my_dev_read(struct file *file, char __user *buff, size_t count, l
 
 static ssize_t my_dev_write(struct file *file, const char __user *buff, size_t count, loff_t *fPos)
 {
+   struct devPriv *devData = (struct devPriv*)file->private_data;
+   int maxSize = devData->size;
+
    pr_info("is called\n");
 
    /* adjust the count */
-   if((*fPos + count) > BUFSIZE)
+   if((*fPos + count) > maxSize)
    {
-      count = BUFSIZE - *fPos;
+      count = maxSize - *fPos;
    }
 
    if(!count)
@@ -195,7 +240,7 @@ static ssize_t my_dev_write(struct file *file, const char __user *buff, size_t c
    }
 
    /* copy data from user */
-   if(copy_from_user(&devBuffer[*fPos], buff, count))
+   if(copy_from_user(&devData->buffer[*fPos], buff, count))
    {
       /* copy from user failed to copy count bytes, due to access permissions */
       return -EFAULT;
