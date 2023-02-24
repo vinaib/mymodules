@@ -19,7 +19,7 @@ struct pcdev_platform_data pcdevPData[4] =
 // release function is part of struct device.
 struct platform_device pcDev1 =
 {
-   .name = "pcd_dev",
+   .name = "pcd_dev_A1x",
    .id = 0,              // used for indexing purpose
    // platform device private data
    .dev = { 
@@ -30,7 +30,7 @@ struct platform_device pcDev1 =
 
 struct platform_device pcDev2 =
 {
-   .name = "pcd_dev",
+   .name = "pcd_dev_B1x",
    .id = 1,
    // platform device private data
    .dev = { 
@@ -41,7 +41,7 @@ struct platform_device pcDev2 =
 
 struct platform_device pcDev3 =
 {
-   .name = "pcd_dev",
+   .name = "pcd_dev_C1x",
    .id = 2,
    // platform device private data
    .dev = { 
@@ -52,7 +52,7 @@ struct platform_device pcDev3 =
 
 struct platform_device pcDev4 =
 {
-   .name = "pcd_dev",
+   .name = "pcd_dev_D1x",
    .id = 3,
    // platform device private data
    .dev = { 
